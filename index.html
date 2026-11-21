@@ -32,7 +32,7 @@ main{padding:22px 16px 50px}.grid{display:grid;grid-template-columns:repeat(auto
 <section id="appView" class="hidden">
   <div class="toolbar">
     <div><b id="welcome"></b><div class="muted small" id="todayLabel"></div></div>
-    <div class="row" style="flex:0 1 auto"><button class="secondary" id="exportBtn">Exportar asistencias CSV</button><button class="secondary" id="logoutBtn">Cerrar sesión</button></div>
+    <div class="row" style="flex:0 1 auto"><button class="secondary" id="exportBtn">Exportar asistencias CSV</button><input type="month" id="reportMonth" aria-label="Mes del reporte" style="max-width:170px"><button id="monthlyPdfBtn">Generar reporte PDF</button><button class="secondary" id="logoutBtn">Cerrar sesión</button></div>
   </div>
   <div class="grid">
     <article class="card">
@@ -117,7 +117,7 @@ function init(){
  $('logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();current=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('password').value=''};
  $('entryBtn').onclick=()=>punch('entrada');$('exitBtn').onclick=()=>punch('salida');
  $('workPhotoInput').onchange=handleWorkPhoto;
- $('scheduleDate').onchange=renderAll;$('exportBtn').onclick=exportCSV;
+ $('scheduleDate').onchange=renderAll;$('exportBtn').onclick=exportCSV;$('reportMonth').value=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;$('monthlyPdfBtn').onclick=exportMonthlyPDF;
  $('prevWeek').onclick=()=>{weekOffset--;renderWeek()};$('nextWeek').onclick=()=>{weekOffset++;renderWeek()};$('thisWeek').onclick=()=>{weekOffset=0;renderWeek()};$('randomWeekBtn').onclick=generateRandomWeek;$('resetWeekBtn').onclick=resetWeek;$('saveShareBtn').onclick=saveAndShareWeek;
  setInterval(()=>{$('liveClock').textContent=new Date().toLocaleTimeString('es-MX')},1000);
 }
@@ -167,7 +167,7 @@ function renderAll(){
  $('entryBtn').classList.toggle('hidden',current.id==='rafa');$('exitBtn').classList.toggle('hidden',current.id==='rafa');
  $('punchMessage').textContent=current.id==='rafa'?'Rafa tiene acceso de consulta; no registra asistencia.':rec?`Entrada: ${rec.entrada||'Pendiente'} · Salida: ${rec.salida||'Pendiente'}`:'Aún no has marcado hoy.';
  $('adminCard').classList.toggle('hidden',!['admin','viewer'].includes(current.dbRole));
- $('exportBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('exportBtn').classList.toggle('hidden',current.dbRole!=='admin');$('monthlyPdfBtn').classList.toggle('hidden',current.dbRole!=='admin');$('reportMonth').classList.toggle('hidden',current.dbRole!=='admin');
  $('randomWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
  $('resetWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
  $('saveShareBtn').classList.toggle('hidden',current.dbRole!=='admin');
@@ -368,6 +368,70 @@ function exportCSV(){
  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
  a.href=url;a.download='reporte_asistencias_alondra_rafa.csv';a.click();URL.revokeObjectURL(url);
 }
+
+async function exportMonthlyPDF(){
+  if(!current || current.dbRole!=='admin'){alert('Solo Alondra y Rafa pueden generar reportes.');return;}
+  const month=$('reportMonth').value;
+  if(!month){alert('Selecciona el mes del reporte.');return;}
+  const reportWindow=window.open('','_blank');
+  if(!reportWindow){alert('Permite las ventanas emergentes para generar el reporte.');return;}
+  reportWindow.document.write('<p style="font-family:Arial;padding:24px">Preparando reporte y cargando fotografías…</p>');
+  try{
+    const monthRecords=records.filter(r=>String(r.date||'').startsWith(month)).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
+    const staff=people.filter(p=>p.id!=='rafa');
+    const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const monthLabel=new Date(`${month}-15T12:00:00`).toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+    const dateLabel=value=>new Date(`${value}T12:00:00`).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'});
+    const sections=[];
+    for(const person of staff){
+      const personRecords=monthRecords.filter(r=>r.id===person.id||r.name===person.name);
+      const complete=personRecords.filter(r=>r.entrada&&r.salida).length;
+      const incomplete=personRecords.filter(r=>!r.entrada||!r.salida).length;
+      let rows='';
+      if(!personRecords.length){rows='<p class="empty">Sin registros de asistencia en este periodo.</p>';}
+      else{
+        for(const record of personRecords){
+          const evidenceHtml=[];
+          for(const type of ['entrada','salida']){
+            const evidence=(record.evidencias||[]).find(e=>e.tipo===type&&e.path);
+            let photo='<div class="no-photo">Sin fotografía registrada</div>';
+            if(evidence){
+              const {data,error}=await supabaseClient.storage.from('attendance-photos').createSignedUrl(evidence.path,3600);
+              if(!error&&data?.signedUrl) photo=`<img class="evidence-photo" src="${esc(data.signedUrl)}" alt="Evidencia de ${type} de ${esc(record.name)}">`;
+              else photo='<div class="no-photo">No se pudo cargar esta fotografía</div>';
+            }
+            const time=type==='entrada'?record.entrada:record.salida;
+            evidenceHtml.push(`<div class="evidence"><div class="evidence-title">${type==='entrada'?'Entrada':'Salida'} · ${esc(time||'Sin registro')}</div>${photo}</div>`);
+          }
+          rows+=`<article class="day-record"><div class="record-head"><b>${esc(dateLabel(record.date))}</b><span>${esc(shiftNames[record.shift]||'Turno no disponible')}</span></div><div class="evidence-grid">${evidenceHtml.join('')}</div><div class="record-status">${record.entrada&&record.salida?'Marcación completa':!record.entrada?'Sin entrada registrada':'Sin salida registrada'}</div></article>`;
+        }
+      }
+      sections.push(`<section class="employee-section"><h2>${esc(person.name)}</h2><div class="summary">${personRecords.length} días con registro · ${complete} marcaciones completas · ${incomplete} incompletas</div>${rows}</section>`);
+    }
+    const doc=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>ControlPro - Reporte ${esc(monthLabel)}</title>
+    <style>
+      *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;padding:28px;background:#fff}
+      .top{border-bottom:3px solid #5b4bdb;padding-bottom:16px;margin-bottom:22px}h1{font-size:25px;margin:0 0 5px;color:#17182b}
+      .subtitle{font-size:17px;font-weight:bold;text-transform:capitalize}.meta{font-size:12px;color:#687386;margin-top:7px}
+      .print-actions{margin:0 0 22px;display:flex;gap:10px;align-items:center}button{border:0;border-radius:8px;padding:11px 16px;background:#5b4bdb;color:white;font-weight:bold;cursor:pointer}
+      .employee-section{margin:26px 0 34px;page-break-before:always;break-before:page}.employee-section:first-of-type{page-break-before:auto;break-before:auto}
+      h2{font-size:20px;margin:0 0 5px;border-bottom:1px solid #ddd;padding-bottom:8px}.summary{font-size:12px;color:#687386;margin-bottom:14px}
+      .day-record{border:1px solid #dfe3eb;border-radius:9px;padding:12px;margin:12px 0;break-inside:avoid;page-break-inside:avoid}
+      .record-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:10px}.record-head span{color:#687386}
+      .evidence-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.evidence{min-width:0}.evidence-title{font-size:12px;font-weight:bold;margin-bottom:6px}
+      .evidence-photo{display:block;width:100%;height:230px;object-fit:contain;background:#f3f5f9;border:1px solid #e4e8ef;border-radius:6px}
+      .no-photo{height:90px;background:#f5f6f8;border:1px dashed #c8ced8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#687386;font-size:12px;text-align:center;padding:8px}
+      .record-status{font-size:11px;color:#687386;margin-top:8px}.empty{color:#687386;font-size:13px;padding:15px;background:#f5f6f8}.footer{font-size:10px;color:#687386;text-align:center;margin-top:25px}
+      @page{size:A4;margin:14mm}@media print{body{padding:0}.print-actions{display:none}.day-record{break-inside:avoid}.evidence-photo{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="print-actions"><button onclick="window.print()">Imprimir / Guardar como PDF</button><span style="font-size:12px;color:#687386">En el destino de impresión, elige “Guardar como PDF”.</span></div>
+      <header class="top"><h1>CONTROLPRO</h1><div class="subtitle">Reporte mensual de asistencia · ${esc(monthLabel)}</div><div class="meta">Periodo: ${esc(month)} · Generado: ${esc(new Date().toLocaleString('es-MX'))}</div></header>
+      ${sections.join('')}<div class="footer">ControlPro · Reporte de asistencia · Las fotografías corresponden a las evidencias guardadas en el sistema.</div>
+    </body></html>`;
+    reportWindow.document.open();reportWindow.document.write(doc);reportWindow.document.close();
+  }catch(error){reportWindow.close();alert('No se pudo generar el reporte: '+(error.message||error));}
+}
+
 init();
 </script>
 </body>
