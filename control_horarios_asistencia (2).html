@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control de horarios y asistencia</title>
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--ink:#172033;--muted:#687386;--line:#e4e8ef;--accent:#5b4bdb;--accent2:#eeeaff;--green:#16845b;--red:#c43d4d;--amber:#9b6500}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+header{background:#17182b;color:#fff;padding:25px 20px}header .wrap,main{max-width:1100px;margin:auto}h1{font-size:clamp(23px,4vw,32px);margin:0 0 5px}header p{margin:0;color:#c7c9d8}
+main{padding:22px 16px 50px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:17px;box-shadow:0 3px 12px #17203308}.card h2{font-size:17px;margin:0 0 12px}.muted{color:var(--muted)}.small{font-size:13px}.person{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.person:last-child{border:0}.tag{display:inline-block;border-radius:99px;padding:4px 9px;background:var(--accent2);color:var(--accent);font-size:12px;font-weight:650}.tag.fixed{background:#e8f5ef;color:var(--green)}button,select,input{font:inherit}button{border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:white;font-weight:650;cursor:pointer}button.secondary{background:#edf0f5;color:#263044}button.danger{background:#fff0f1;color:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}input,select{border:1px solid var(--line);border-radius:9px;padding:9px;background:white;color:var(--ink);width:100%}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}.toolbar input{max-width:220px}.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:650px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--muted);font-weight:650;background:#fafbfc}.empty{text-align:center;color:var(--muted);padding:24px}.shiftcell{min-width:115px}.shiftpill{display:inline-block;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:650;background:#eeeaff;color:#5141c8}.shiftpill.pm{background:#e8f2ff;color:#245c9d}.shiftpill.rest{background:#f1f2f5;color:#687386}.shiftpill.fixed{background:#e8f5ef;color:#16845b}.notice{background:#fff8e8;border:1px solid #f2dfb3;color:#704d08;padding:12px 14px;border-radius:11px;margin:14px 0}.login{max-width:430px;margin:24px auto}.hidden{display:none!important}.clock{font-size:27px;font-weight:750;font-variant-numeric:tabular-nums}.status{font-size:12px;font-weight:700}.status.ok{color:var(--green)}.status.pending{color:var(--amber)}footer{color:var(--muted);font-size:12px;text-align:center;margin-top:25px}
+@media(max-width:600px){header{padding:21px 16px}.card{padding:14px}.toolbar{align-items:stretch}.toolbar input{max-width:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>Control de horarios y asistencia</h1><p>Registro de entradas, salidas, turnos y descansos del personal</p></div></header>
+<main>
+<section id="loginView" class="card login">
+  <h2>Ingresar al sistema</h2>
+  <p class="muted small">Selecciona tu usuario e ingresa tu contraseña.</p>
+  <label class="small" for="userSelect">Usuario</label>
+  <select id="userSelect"></select>
+  <div style="height:10px"></div>
+  <label class="small" for="password">Contraseña</label>
+  <input id="password" type="password" placeholder="Contraseña">
+  <div style="height:14px"></div>
+  <button id="loginBtn" style="width:100%">Entrar</button>
+  <p id="loginError" class="small" style="color:var(--red)"></p>
+  <p class="muted small">Acceso de demostración: la contraseña inicial es el usuario en minúsculas. Alondra y Rafa pueden administrar horarios; Yesenia consulta; las operarias consultan su horario y marcan asistencia.</p>
+</section>
+
+<section id="appView" class="hidden">
+  <div class="toolbar">
+    <div><b id="welcome"></b><div class="muted small" id="todayLabel"></div></div>
+    <div class="row" style="flex:0 1 auto"><button class="secondary" id="exportBtn">Exportar asistencias CSV</button><button class="secondary" id="logoutBtn">Cerrar sesión</button></div>
+  </div>
+  <div class="grid">
+    <article class="card">
+      <h2>Mi marcación</h2>
+      <div class="clock" id="liveClock">--:--:--</div>
+      <p class="muted small" id="myShift"></p>
+      <p class="small muted">Para registrar entrada o salida debes tomar una foto del área de trabajo con la cámara trasera.</p>
+      <input id="workPhotoInput" type="file" accept="image/*" capture="environment" class="hidden">
+      <p id="photoHint" class="small muted">La foto se adjuntará a tu marcación como evidencia.</p>
+      <div class="row"><button id="entryBtn">Marcar entrada</button><button id="exitBtn" class="secondary">Marcar salida</button></div>
+      <p id="punchMessage" class="small muted"></p>
+    </article>
+    <article class="card">
+      <h2>Mi horario</h2>
+      <div id="mySchedule"></div>
+    </article>
+    <article class="card" id="adminCard">
+      <h2>Panel de administración</h2>
+      <p class="muted small">Consulta el personal, ajusta el turno operativo del día y revisa las marcaciones.</p>
+      <div class="row"><label class="small">Fecha <input type="date" id="scheduleDate"></label></div>
+    </article>
+  </div>
+  <div class="notice"><b>Regla de cobertura:</b> cuando Ale, Fernanda o Melanie descansa, las otras dos pueden cubrir/reacomodarse entre los turnos. Alondra y Yesenia conservan su horario fijo y no participan en la cobertura. Regla de capacidad: de lunes a sábado, el turno de mañana tendrá a Alondra y solo una empleada operativa (máximo 2 personas en total). El domingo Alondra descansa y pueden quedar hasta 2 empleadas operativas en la mañana. La rotación automática distribuye a las operativas entre mañana y tarde y respeta sus descansos fijos. Yesenia conserva el turno de tarde.</div>
+  <div class="grid">
+    <article class="card">
+      <h2>Personal y horarios</h2>
+      <div id="staffList"></div>
+    </article>
+    <article class="card">
+      <h2>Asignar turno operativo</h2>
+      
+      <div id="shiftEditor"></div>
+    </article>
+  </div>
+  <article class="card" style="margin-top:14px">
+    <div class="toolbar">
+      <div><h2 style="margin:0">Calendario semanal de horarios</h2><div class="muted small">Vista de lunes a domingo con turnos y descansos</div></div>
+      <div class="row" style="flex:0 1 auto"><button class="secondary" id="prevWeek">← Semana anterior</button><button class="secondary" id="thisWeek">Esta semana</button><button class="secondary" id="nextWeek">Semana siguiente →</button><button id="randomWeekBtn">🎲 Generar semana aleatoria</button><button type="button" class="secondary" id="resetWeekBtn">↺ Restablecer semana</button><button id="saveShareBtn">Guardar horarios</button></div>
+    </div>
+    <p class="small muted" id="weekLabel"></p>
+    <div class="tablewrap"><table id="weekTable"><thead id="weekHead"></thead><tbody id="weekBody"></tbody></table></div>
+  </article>
+  <article class="card" style="margin-top:14px">
+    <div class="toolbar"><h2 style="margin:0">Registro de asistencias</h2><span class="muted small">Guardado en este navegador</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody id="attendanceRows"></tbody></table></div>
+    <div id="noRows" class="empty">Todavía no hay marcaciones.</div>
+  </article>
+</section>
+<footer>Prototipo local · Los datos se guardan únicamente en el navegador y dispositivo donde se utiliza.</footer>
+</main>
+<script>
+const people = [
+ {id:'alondra',name:'Alondra',role:'Encargada',shift:'07:00-15:00',rest:0,fixed:true},
+ {id:'yesenia',name:'Yesenia',role:'Encargada',shift:'15:00-23:00',rest:6,fixed:true},
+ {id:'ale',name:'Ale',role:'Operativa',shift:'',rest:3,fixed:false},
+ {id:'fernanda',name:'Fernanda',role:'Operativa',shift:'',rest:2,fixed:false},
+ {id:'melanie',name:'Melanie',role:'Operativa',shift:'',rest:5,fixed:false},
+ {id:'rafa',name:'Rafa',role:'Jefe',shift:'',rest:null,fixed:true}
+];
+const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const shiftNames={'07:00-15:00':'7:00 a. m. – 3:00 p. m.','15:00-23:00':'3:00 p. m. – 11:00 p. m.','OFF':'Descanso','':'Por asignar'};
+const $=id=>document.getElementById(id);
+const getStore=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const setStore=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+let current=null;
+let weekOffset=0;
+let schedules=getStore('staffSchedules',{});
+let records=getStore('attendanceRecords',[]);
+const dateKey=d=>{let x=d||new Date();return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`};
+const today=dateKey();
+const shiftFor=(p,date)=>p.fixed?p.shift:(schedules[date]?.[p.id]||'');
+const restText=p=>p.rest===null?'No aplica':days[p.rest];
+function init(){
+ $('userSelect').innerHTML=people.map(p=>`<option value="${p.id}">${p.name} — ${p.role}</option>`).join('');
+ $('scheduleDate').value=today;
+ $('todayLabel').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+ $('loginBtn').onclick=login; $('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
+ $('logoutBtn').onclick=()=>{current=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('password').value=''};
+ $('entryBtn').onclick=()=>punch('entrada');$('exitBtn').onclick=()=>punch('salida');
+ $('workPhotoInput').onchange=handleWorkPhoto;
+ $('scheduleDate').onchange=renderAll;$('exportBtn').onclick=exportCSV;
+ $('prevWeek').onclick=()=>{weekOffset--;renderWeek()};$('nextWeek').onclick=()=>{weekOffset++;renderWeek()};$('thisWeek').onclick=()=>{weekOffset=0;renderWeek()};$('randomWeekBtn').onclick=generateRandomWeek;$('resetWeekBtn').onclick=resetWeek;$('saveShareBtn').onclick=saveAndShareWeek;
+ setInterval(()=>{$('liveClock').textContent=new Date().toLocaleTimeString('es-MX')},1000);
+}
+function login(){
+ const id=$('userSelect').value,pass=$('password').value.trim().toLowerCase();
+ if(pass!==id){$('loginError').textContent='Contraseña incorrecta. En esta demo, usa el nombre del usuario en minúsculas.';return}
+ current=people.find(p=>p.id===id);$('loginError').textContent='';
+ $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+ $('welcome').textContent=`Hola, ${current.name}`;renderAll();
+}
+function renderAll(){
+ if(!current)return;
+ const date=$('scheduleDate').value||today;
+ const ownShift=shiftFor(current,date);
+ $('myShift').textContent=current.id==='rafa'?'Acceso de jefe: consulta de horarios y asistencias':current.fixed?`Horario fijo: ${shiftNames[current.shift]}`:`Turno asignado para ${date}: ${shiftNames[ownShift]}`;
+ $('mySchedule').innerHTML=`<div class="person"><span>Tipo</span><b>${current.role}</b></div><div class="person"><span>Descanso fijo</span><b>${restText(current)}</b></div><div class="person"><span>Horario</span><b>${current.id==='rafa'?'Solo consulta':shiftNames[current.fixed?current.shift:ownShift]}</b></div>`;
+ const rec=records.find(r=>r.date===today&&r.id===current.id);
+ $('entryBtn').disabled=current.id==='rafa'||!!(rec&&rec.entrada);$('exitBtn').disabled=current.id==='rafa'||!(rec&&rec.entrada)||!!(rec&&rec.salida);
+ $('entryBtn').classList.toggle('hidden',current.id==='rafa');$('exitBtn').classList.toggle('hidden',current.id==='rafa');
+ $('punchMessage').textContent=current.id==='rafa'?'Rafa tiene acceso de consulta; no registra asistencia.':rec?`Entrada: ${rec.entrada||'Pendiente'} · Salida: ${rec.salida||'Pendiente'}`:'Aún no has marcado hoy.';
+ $('adminCard').classList.toggle('hidden',!['alondra','yesenia','rafa'].includes(current.id));
+ $('exportBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
+ $('randomWeekBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
+ $('resetWeekBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
+ $('saveShareBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
+ $('staffList').innerHTML=people.map(p=>`<div class="person"><div><b>${p.name}</b><div class="muted small">${p.role} · Descansa ${restText(p)}</div></div><span class="tag ${p.fixed?'fixed':''}">${p.fixed?shiftNames[p.shift]:'Rotativo'}</span></div>`).join('');
+ renderEditor(date);renderRecords();renderWeek();
+}
+function renderEditor(date){
+ const host=$('shiftEditor');
+ if(!['alondra','rafa'].includes(current.id)){host.innerHTML='<p class="muted small">Solo Alondra y Rafa pueden editar y asignar los turnos. Puedes consultar el calendario en modo lectura.</p>';return}
+ host.innerHTML=people.filter(p=>!p.fixed).map(p=>{
+ const value=shiftFor(p,date);
+ const options=[['','Por asignar'],['07:00-15:00',shiftNames['07:00-15:00']],['15:00-23:00',shiftNames['15:00-23:00']],['OFF','Descanso']];
+ return `<div class="person"><div><b>${p.name}</b><div class="muted small">Descanso fijo: ${restText(p)}</div></div><select data-person="${p.id}">${options.map(([v,l])=>`<option value="${v}" ${value===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
+ }).join('')+'<p class="small muted">Los descansos fijos se muestran como referencia; selecciona “Descanso” si corresponde para esa fecha.</p>';
+ host.querySelectorAll('select').forEach(sel=>sel.onchange=()=>{const id=sel.dataset.person;schedules[date]=schedules[date]||{};schedules[date][id]=sel.value;setStore('staffSchedules',schedules);renderAll()});
+}
+
+function weekStart(offset=0){
+ const d=new Date();d.setHours(0,0,0,0);
+ const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+offset*7);return d;
+}
+function dateString(d){return dateKey(d)}
+
+function generateRandomWeek(){
+ if(!current || !['alondra','rafa'].includes(current.id)){
+  alert('Solo Alondra y Rafa pueden generar la rotación semanal.');
+  return;
+ }
+ const start=weekStart(weekOffset), dates=[];
+ for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);dates.push(d)}
+ const ops=people.filter(p=>!p.fixed);
+ dates.forEach(d=>{
+  const key=dateString(d);
+  schedules[key]=schedules[key]||{};
+  const working=ops.filter(p=>d.getDay()!==p.rest);
+  const shuffled=[...working].sort(()=>Math.random()-0.5);
+  if(d.getDay()===0){
+   // Sunday: Alondra is off; up to two operators can cover the morning.
+   shuffled.forEach((person,index)=>schedules[key][person.id]=index<2?'07:00-15:00':'15:00-23:00');
+  }else{
+   // Monday-Saturday: only one operator joins Alondra in the morning; the others work the afternoon with Yesenia.
+   shuffled.forEach((person,index)=>schedules[key][person.id]=index===0?'07:00-15:00':'15:00-23:00');
+  }
+  ops.filter(p=>!working.includes(p)).forEach(p=>schedules[key][p.id]='OFF');
+ });
+ setStore('staffSchedules',schedules);
+ renderAll();
+ alert('Rotación aleatoria generada. Revisa el calendario y después pulsa “Guardar y enviar a operarios”.');
+}
+
+
+function resetWeek(){
+ if(!current || !['alondra','rafa'].includes(current.id)){
+  alert('Esta acción solo está disponible para Alondra y Rafa.');
+  return;
+ }
+ // Restablece exactamente la semana que está abierta en el calendario.
+ const start=weekStart(weekOffset);
+ const ops=['ale','fernanda','melanie'];
+ try{
+  for(let i=0;i<7;i++){
+   const d=new Date(start);
+   d.setDate(start.getDate()+i);
+   const key=dateString(d);
+   if(schedules[key] && typeof schedules[key]==='object'){
+    ops.forEach(id=>{delete schedules[key][id];});
+    if(Object.keys(schedules[key]).length===0) delete schedules[key];
+   }
+  }
+  localStorage.setItem('staffSchedules',JSON.stringify(schedules));
+  renderAll();
+  alert('¡Listo! Se restableció la semana que estás viendo. Ale, Fernanda y Melanie aparecen como “Por asignar”. Las asistencias y fotos siguen guardadas.');
+ }catch(error){
+  console.error('Error al restablecer semana:',error);
+  alert('No se pudo restablecer. El navegador podría tener bloqueado el almacenamiento del sitio.');
+ }
+}
+
+function saveAndShareWeek(){
+ if(!current || !['alondra','rafa'].includes(current.id)){
+  alert('Solo Alondra y Rafa pueden guardar los horarios.');
+  return;
+ }
+ try{
+  setStore('staffSchedules',schedules);
+  renderAll();
+  alert('Horarios guardados en este navegador. Importante: todavía no se envían ni se sincronizan con las cuentas de las operarias. Para que cada una los vea desde su propio usuario y dispositivo, hace falta conectar el sistema a una base de datos en línea.');
+ }catch(error){
+  alert('No se pudieron guardar los horarios. Revisa el almacenamiento del navegador.');
+  console.error(error);
+ }
+}
+
+function renderWeek(){
+ if(!current)return;
+ const start=weekStart(weekOffset), dates=[];
+ for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);dates.push(d)}
+ $('weekLabel').textContent=`${dates[0].toLocaleDateString('es-MX',{day:'numeric',month:'short'})} – ${dates[6].toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}`;
+ $('weekHead').innerHTML='<tr><th>Personal</th>'+dates.map(d=>`<th>${days[d.getDay()]}<br><span class="muted small">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')+'</tr>';
+ $('weekBody').innerHTML=people.filter(p=>p.id!=='rafa').map(p=>{
+  const cells=dates.map(d=>{
+   const key=dateString(d),rest=d.getDay()===p.rest;
+   let sh=rest?'OFF':shiftFor(p,key);
+   // Fixed staff retain their fixed shifts; operational staff get the generated daily assignment.
+   if(!p.fixed && rest)sh='OFF';
+   const cls=sh==='OFF'?'rest':sh==='15:00-23:00'?'pm':p.fixed?'fixed':'';
+   const label=sh==='OFF'?'Descanso':shiftNames[sh]||'Por asignar';
+   return `<td class="shiftcell"><span class="shiftpill ${cls}">${label}</span></td>`;
+  }).join('');
+  return `<tr><td><b>${p.name}</b><br><span class="muted small">${p.role}</span></td>${cells}</tr>`;
+ }).join('');
+}
+
+let pendingPunchType=null;
+function punch(type){
+ if(current.id==='rafa')return;
+ pendingPunchType=type;
+ $('photoHint').textContent=`Tomando foto obligatoria para registrar ${type==='entrada'?'la entrada':'la salida'}…`;
+ $('workPhotoInput').value='';
+ $('workPhotoInput').click();
+}
+function handleWorkPhoto(event){
+ const file=event.target.files&&event.target.files[0];
+ if(!file){$('photoHint').textContent='No se tomó ninguna foto. La marcación no se registró.';return}
+ if(!file.type.startsWith('image/')){
+  $('photoHint').textContent='El archivo seleccionado no es una imagen.';
+  return;
+ }
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const img=new Image();
+  img.onload=()=>{
+   const maxWidth=900,scale=Math.min(1,maxWidth/img.width);
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);
+   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+   const photoData=canvas.toDataURL('image/jpeg',0.62);
+   savePhotoPunch(pendingPunchType,photoData);
+  };
+  img.onerror=()=>$('photoHint').textContent='No se pudo leer la fotografía. Intenta nuevamente.';
+  img.src=reader.result;
+ };
+ reader.onerror=()=>$('photoHint').textContent='No se pudo cargar la fotografía.';
+ reader.readAsDataURL(file);
+}
+function savePhotoPunch(type,photoData){
+ const date=today;let r=records.find(x=>x.date===date&&x.id===current.id);
+ if(!r){r={date,id:current.id,name:current.name,shift:shiftFor(current,date),entrada:'',salida:'',evidencias:[]};records.push(r)}
+ if(!r.evidencias)r.evidencias=[];
+ if(type==='entrada'&&!r.entrada){
+  r.entrada=new Date().toLocaleTimeString('es-MX');
+  r.evidencias.push({tipo:type,hora:new Date().toISOString(),foto:photoData});
+ }else if(type==='salida'&&r.entrada&&!r.salida){
+  r.salida=new Date().toLocaleTimeString('es-MX');
+  r.evidencias.push({tipo:type,hora:new Date().toISOString(),foto:photoData});
+ }else{
+  $('photoHint').textContent='Esta marcación ya fue registrada o no corresponde.';
+  renderAll();return;
+ }
+ r.shift=shiftFor(current,date);
+ try{
+  setStore('attendanceRecords',records);
+  $('photoHint').textContent=`${type==='entrada'?'Entrada':'Salida'} registrada con fotografía.`;
+ }catch(err){
+  $('photoHint').textContent='La foto se tomó, pero el almacenamiento del navegador está lleno. Publica el sistema con almacenamiento en servidor para conservar evidencias.';
+ }
+ renderAll();
+}
+
+function renderRecords(){
+ const sorted=[...records].sort((a,b)=>b.date.localeCompare(a.date));
+ $('attendanceRows').innerHTML=sorted.map((r,i)=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${shiftNames[r.shift]||'Por asignar'}</td><td>${r.entrada||'—'}</td><td>${r.salida||'—'}</td><td><span class="status ${r.entrada&&r.salida?'ok':'pending'}">${r.entrada&&r.salida?'Completa':r.entrada?'Falta salida':'Pendiente'}</span>${(r.evidencias||[]).map((e,j)=>`<div><button class="secondary" style="padding:5px 8px;margin-top:4px" onclick="viewEvidence(${records.indexOf(r)},${j})">Ver ${e.tipo}</button></div>`).join('')}</td></tr>`).join('');
+ $('noRows').classList.toggle('hidden',sorted.length>0);
+}
+function viewEvidence(recordIndex,evidenceIndex){
+ const evidence=records[recordIndex]?.evidencias?.[evidenceIndex];
+ if(!evidence)return;
+ const w=window.open('');
+ if(!w){alert('Permite ventanas emergentes para ver la fotografía.');return}
+ w.document.write(`<title>Evidencia ${evidence.tipo}</title><p>${evidence.tipo} · ${new Date(evidence.hora).toLocaleString('es-MX')}</p><img src="${evidence.foto}" style="max-width:100%;height:auto">`);
+}
+
+function exportCSV(){
+ if(!current || !['alondra','rafa'].includes(current.id)){
+  alert('Solo Alondra y Rafa pueden exportar el reporte.');
+  return;
+ }
+ const rows=[['Fecha','Empleado','Turno','Entrada','Salida','Evidencia entrada','Evidencia salida','Estado de evidencia','Cantidad de fotos','Evidencias (tipo y fecha/hora)']];
+ records.forEach(r=>{
+  const evidences=r.evidencias||[];
+  rows.push([
+   r.date,r.name,shiftNames[r.shift]||'Por asignar',r.entrada||'',r.salida||'',
+   evidences.some(e=>e.tipo==='entrada'&&e.foto)?'Foto cargada':'Sin foto',
+   evidences.some(e=>e.tipo==='salida'&&e.foto)?'Foto cargada':(r.salida?'Sin foto':'No aplica'),
+   evidences.some(e=>e.foto)?'Con evidencia':'Sin evidencia',
+   evidences.filter(e=>e.foto).length,
+   evidences.map(e=>`${e.tipo}: ${new Date(e.hora).toLocaleString('es-MX')}`).join(' | ')
+  ]);
+ });
+ const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+ const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='reporte_asistencias_alondra_rafa.csv';a.click();URL.revokeObjectURL(url);
+}
+init();
+</script>
+</body>
+</html>
