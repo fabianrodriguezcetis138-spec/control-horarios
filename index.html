@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Control de horarios y asistencia</title>
+<title>ControlPro · Horarios y asistencia</title>
 <style>
 :root{--bg:#f3f5f9;--card:#fff;--ink:#172033;--muted:#687386;--line:#e4e8ef;--accent:#5b4bdb;--accent2:#eeeaff;--green:#16845b;--red:#c43d4d;--amber:#9b6500}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
@@ -26,7 +26,7 @@ main{padding:22px 16px 50px}.grid{display:grid;grid-template-columns:repeat(auto
   <div style="height:14px"></div>
   <button id="loginBtn" style="width:100%">Entrar</button>
   <p id="loginError" class="small" style="color:var(--red)"></p>
-  <p class="muted small">Acceso de demostración: la contraseña inicial es el usuario en minúsculas. Alondra y Rafa pueden administrar horarios; Yesenia consulta; las operarias consultan su horario y marcan asistencia.</p>
+  <p class="muted small">Ingresa con el correo y la contraseña de tu cuenta autorizada.</p>
 </section>
 
 <section id="appView" class="hidden">
@@ -76,21 +76,25 @@ main{padding:22px 16px 50px}.grid{display:grid;grid-template-columns:repeat(auto
     <div class="tablewrap"><table id="weekTable"><thead id="weekHead"></thead><tbody id="weekBody"></tbody></table></div>
   </article>
   <article class="card" style="margin-top:14px">
-    <div class="toolbar"><h2 style="margin:0">Registro de asistencias</h2><span class="muted small">Guardado en este navegador</span></div>
+    <div class="toolbar"><h2 style="margin:0">Registro de asistencias</h2><span class="muted small">Sincronizado con el servidor</span></div>
     <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody id="attendanceRows"></tbody></table></div>
     <div id="noRows" class="empty">Todavía no hay marcaciones.</div>
   </article>
 </section>
-<footer>Prototipo local · Los datos se guardan únicamente en el navegador y dispositivo donde se utiliza.</footer>
+<footer>ControlPro · Datos sincronizados mediante Supabase.</footer>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL = "https://hwdzrodtqirvujcenxt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_w8qGP-p4FGu51iswVjT27Q_Sr4q-3EW";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const people = [
- {id:'alondra',name:'Alondra',role:'Encargada',shift:'07:00-15:00',rest:0,fixed:true},
- {id:'yesenia',name:'Yesenia',role:'Encargada',shift:'15:00-23:00',rest:6,fixed:true},
- {id:'ale',name:'Ale',role:'Operativa',shift:'',rest:3,fixed:false},
- {id:'fernanda',name:'Fernanda',role:'Operativa',shift:'',rest:2,fixed:false},
- {id:'melanie',name:'Melanie',role:'Operativa',shift:'',rest:5,fixed:false},
- {id:'rafa',name:'Rafa',role:'Jefe',shift:'',rest:null,fixed:true}
+ {id:'alondra',email:'alondra@laslomas.com',name:'Alondra',role:'Encargada',shift:'07:00-15:00',rest:0,fixed:true},
+ {id:'yesenia',email:'yesenia@laslomas.com',name:'Yesenia',role:'Encargada',shift:'15:00-23:00',rest:6,fixed:true},
+ {id:'ale',email:'ale@laslomas.com',name:'Ale',role:'Operativa',shift:'',rest:3,fixed:false},
+ {id:'fernanda',email:'fernanda@laslomas.com',name:'Fernanda',role:'Operativa',shift:'',rest:2,fixed:false},
+ {id:'melanie',email:'melanie@laslomas.com',name:'Melanie',role:'Operativa',shift:'',rest:5,fixed:false},
+ {id:'rafa',email:'rafa@laslomas.com',name:'Rafa',role:'Jefe',shift:'',rest:null,fixed:true}
 ];
 const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const shiftNames={'07:00-15:00':'7:00 a. m. – 3:00 p. m.','15:00-23:00':'3:00 p. m. – 11:00 p. m.','OFF':'Descanso','':'Por asignar'};
@@ -110,20 +114,48 @@ function init(){
  $('scheduleDate').value=today;
  $('todayLabel').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
  $('loginBtn').onclick=login; $('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
- $('logoutBtn').onclick=()=>{current=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('password').value=''};
+ $('logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();current=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('password').value=''};
  $('entryBtn').onclick=()=>punch('entrada');$('exitBtn').onclick=()=>punch('salida');
  $('workPhotoInput').onchange=handleWorkPhoto;
  $('scheduleDate').onchange=renderAll;$('exportBtn').onclick=exportCSV;
  $('prevWeek').onclick=()=>{weekOffset--;renderWeek()};$('nextWeek').onclick=()=>{weekOffset++;renderWeek()};$('thisWeek').onclick=()=>{weekOffset=0;renderWeek()};$('randomWeekBtn').onclick=generateRandomWeek;$('resetWeekBtn').onclick=resetWeek;$('saveShareBtn').onclick=saveAndShareWeek;
  setInterval(()=>{$('liveClock').textContent=new Date().toLocaleTimeString('es-MX')},1000);
 }
-function login(){
- const id=$('userSelect').value,pass=$('password').value.trim().toLowerCase();
- if(pass!==id){$('loginError').textContent='Contraseña incorrecta. En esta demo, usa el nombre del usuario en minúsculas.';return}
- current=people.find(p=>p.id===id);$('loginError').textContent='';
- $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
- $('welcome').textContent=`Hola, ${current.name}`;renderAll();
+async function login(){
+ const id=$('userSelect').value;
+ const person=people.find(p=>p.id===id);
+ const password=$('password').value;
+ $('loginBtn').disabled=true;
+ $('loginError').textContent='Conectando…';
+ try{
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email:person.email,password});
+  if(error) throw error;
+  const {data:profile,error:profileError}=await supabaseClient.from('profiles').select('*').eq('id',data.user.id).single();
+  if(profileError) throw profileError;
+  person.uid=data.user.id; current={...person,uid:data.user.id,dbRole:profile.role};
+  if(!profile.active) throw new Error('Tu cuenta está desactivada. Contacta a administración.');
+  await loadCloudData();
+  $('loginError').textContent='';
+  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+  $('welcome').textContent=`Hola, ${current.name}`;
+  renderAll();
+ }catch(err){
+  $('loginError').textContent=err.message==='Invalid login credentials'?'Correo o contraseña incorrectos.':(err.message||'No se pudo iniciar sesión.');
+ }finally{$('loginBtn').disabled=false;}
 }
+async function loadCloudData(){
+ const {data:prof,error:pe}=await supabaseClient.from('profiles').select('id,full_name,role,active');
+ if(pe) throw pe;
+ (prof||[]).forEach(row=>{const p=people.find(x=>x.name.toLowerCase()===String(row.full_name).toLowerCase());if(p)p.uid=row.id;});
+ const {data:sch,error:se}=await supabaseClient.from('schedules').select('*');
+ if(se) throw se;
+ schedules={};
+ (sch||[]).forEach(r=>{const p=people.find(x=>x.uid===r.employee_id||x.id===r.employee_id);const key=r.work_date;if(!schedules[key])schedules[key]={};if(p)schedules[key][p.id]=r.shift==='morning'?'07:00-15:00':r.shift==='afternoon'?'15:00-23:00':r.shift==='rest'?'OFF':'';});
+ const {data:att,error:ae}=await supabaseClient.from('attendance').select('*, evidence(*)').order('work_date',{ascending:false});
+ if(ae) throw ae;
+ records=(att||[]).map(r=>{const p=people.find(x=>x.uid===r.employee_id);return {id:p?.id||r.employee_id,uid:r.employee_id,date:r.work_date,name:p?.name||'Empleado',shift:shiftFor(p||{fixed:false,id:''},r.work_date),entrada:r.check_in?new Date(r.check_in).toLocaleTimeString('es-MX'):'',salida:r.check_out?new Date(r.check_out).toLocaleTimeString('es-MX'):'',cloudId:r.id,evidencias:(r.evidence||[]).map(e=>({tipo:e.evidence_type==='check_in'?'entrada':'salida',hora:e.created_at,path:e.storage_path}))};});
+}
+
 function renderAll(){
  if(!current)return;
  const date=$('scheduleDate').value||today;
@@ -134,23 +166,23 @@ function renderAll(){
  $('entryBtn').disabled=current.id==='rafa'||!!(rec&&rec.entrada);$('exitBtn').disabled=current.id==='rafa'||!(rec&&rec.entrada)||!!(rec&&rec.salida);
  $('entryBtn').classList.toggle('hidden',current.id==='rafa');$('exitBtn').classList.toggle('hidden',current.id==='rafa');
  $('punchMessage').textContent=current.id==='rafa'?'Rafa tiene acceso de consulta; no registra asistencia.':rec?`Entrada: ${rec.entrada||'Pendiente'} · Salida: ${rec.salida||'Pendiente'}`:'Aún no has marcado hoy.';
- $('adminCard').classList.toggle('hidden',!['alondra','yesenia','rafa'].includes(current.id));
- $('exportBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
- $('randomWeekBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
- $('resetWeekBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
- $('saveShareBtn').classList.toggle('hidden',!['alondra','rafa'].includes(current.id));
+ $('adminCard').classList.toggle('hidden',!['admin','viewer'].includes(current.dbRole));
+ $('exportBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('randomWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('resetWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('saveShareBtn').classList.toggle('hidden',current.dbRole!=='admin');
  $('staffList').innerHTML=people.map(p=>`<div class="person"><div><b>${p.name}</b><div class="muted small">${p.role} · Descansa ${restText(p)}</div></div><span class="tag ${p.fixed?'fixed':''}">${p.fixed?shiftNames[p.shift]:'Rotativo'}</span></div>`).join('');
  renderEditor(date);renderRecords();renderWeek();
 }
 function renderEditor(date){
  const host=$('shiftEditor');
- if(!['alondra','rafa'].includes(current.id)){host.innerHTML='<p class="muted small">Solo Alondra y Rafa pueden editar y asignar los turnos. Puedes consultar el calendario en modo lectura.</p>';return}
+ if(current.dbRole!=='admin'){host.innerHTML='<p class="muted small">Solo Alondra y Rafa pueden editar y asignar los turnos. Puedes consultar el calendario en modo lectura.</p>';return}
  host.innerHTML=people.filter(p=>!p.fixed).map(p=>{
  const value=shiftFor(p,date);
  const options=[['','Por asignar'],['07:00-15:00',shiftNames['07:00-15:00']],['15:00-23:00',shiftNames['15:00-23:00']],['OFF','Descanso']];
  return `<div class="person"><div><b>${p.name}</b><div class="muted small">Descanso fijo: ${restText(p)}</div></div><select data-person="${p.id}">${options.map(([v,l])=>`<option value="${v}" ${value===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
  }).join('')+'<p class="small muted">Los descansos fijos se muestran como referencia; selecciona “Descanso” si corresponde para esa fecha.</p>';
- host.querySelectorAll('select').forEach(sel=>sel.onchange=()=>{const id=sel.dataset.person;schedules[date]=schedules[date]||{};schedules[date][id]=sel.value;setStore('staffSchedules',schedules);renderAll()});
+ host.querySelectorAll('select').forEach(sel=>sel.onchange=async()=>{const id=sel.dataset.person,p=people.find(x=>x.id===id);schedules[date]=schedules[date]||{};schedules[date][id]=sel.value;try{await saveScheduleCloud(p,date,sel.value);renderAll()}catch(e){alert('No se pudo guardar el turno: '+e.message)}});
 }
 
 function weekStart(offset=0){
@@ -159,8 +191,8 @@ function weekStart(offset=0){
 }
 function dateString(d){return dateKey(d)}
 
-function generateRandomWeek(){
- if(!current || !['alondra','rafa'].includes(current.id)){
+async function generateRandomWeek(){
+ if(!current || current.dbRole!=='admin'){
   alert('Solo Alondra y Rafa pueden generar la rotación semanal.');
   return;
  }
@@ -181,52 +213,27 @@ function generateRandomWeek(){
   }
   ops.filter(p=>!working.includes(p)).forEach(p=>schedules[key][p.id]='OFF');
  });
- setStore('staffSchedules',schedules);
- renderAll();
- alert('Rotación aleatoria generada. Revisa el calendario y después pulsa “Guardar y enviar a operarios”.');
+ try{for(const d of dates){const key=dateString(d);for(const p of ops){await saveScheduleCloud(p,key,schedules[key]?.[p.id]||'');}}await loadCloudData();renderAll();alert('Rotación aleatoria generada y sincronizada.');}catch(e){alert('No se pudo sincronizar la rotación: '+e.message)}
 }
 
 
-function resetWeek(){
- if(!current || !['alondra','rafa'].includes(current.id)){
-  alert('Esta acción solo está disponible para Alondra y Rafa.');
-  return;
- }
- // Restablece exactamente la semana que está abierta en el calendario.
+async function resetWeek(){
+ if(!current || current.dbRole!=='admin'){alert('Solo administración puede restablecer la semana.');return;}
+ if(!confirm('¿Restablecer los turnos operativos de esta semana? No se borrarán asistencias ni fotografías.'))return;
  const start=weekStart(weekOffset);
- const ops=['ale','fernanda','melanie'];
- try{
-  for(let i=0;i<7;i++){
-   const d=new Date(start);
-   d.setDate(start.getDate()+i);
-   const key=dateString(d);
-   if(schedules[key] && typeof schedules[key]==='object'){
-    ops.forEach(id=>{delete schedules[key][id];});
-    if(Object.keys(schedules[key]).length===0) delete schedules[key];
-   }
-  }
-  localStorage.setItem('staffSchedules',JSON.stringify(schedules));
-  renderAll();
-  alert('¡Listo! Se restableció la semana que estás viendo. Ale, Fernanda y Melanie aparecen como “Por asignar”. Las asistencias y fotos siguen guardadas.');
- }catch(error){
-  console.error('Error al restablecer semana:',error);
-  alert('No se pudo restablecer. El navegador podría tener bloqueado el almacenamiento del sitio.');
- }
+ try{for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);const key=dateString(d);const {error}=await supabaseClient.from('schedules').delete().eq('work_date',key).in('employee_id',people.filter(p=>!p.fixed).map(p=>p.uid));if(error)throw error;}
+ await loadCloudData();renderAll();alert('Semana restablecida y sincronizada.');}catch(e){alert('No se pudo restablecer: '+e.message);}
 }
 
-function saveAndShareWeek(){
- if(!current || !['alondra','rafa'].includes(current.id)){
-  alert('Solo Alondra y Rafa pueden guardar los horarios.');
-  return;
- }
- try{
-  setStore('staffSchedules',schedules);
-  renderAll();
-  alert('Horarios guardados en este navegador. Importante: todavía no se envían ni se sincronizan con las cuentas de las operarias. Para que cada una los vea desde su propio usuario y dispositivo, hace falta conectar el sistema a una base de datos en línea.');
- }catch(error){
-  alert('No se pudieron guardar los horarios. Revisa el almacenamiento del navegador.');
-  console.error(error);
- }
+async function saveAndShareWeek(){
+ if(!current || current.dbRole!=='admin'){alert('Solo administración puede guardar horarios.');return;}
+ try{await loadCloudData();renderAll();alert('Los horarios están guardados en Supabase y disponibles para los usuarios autorizados.');}catch(e){alert('No se pudieron actualizar los horarios: '+e.message);}
+}
+async function saveScheduleCloud(person,date,shift){
+ if(!person?.uid)throw new Error('No se encontró el usuario del empleado.');
+ const map={'07:00-15:00':'morning','15:00-23:00':'afternoon','OFF':'rest','':'unassigned'};
+ const payload={employee_id:person.uid,work_date:date,shift:map[shift]||'unassigned',start_time:shift==='07:00-15:00'?'07:00':shift==='15:00-23:00'?'15:00':null,end_time:shift==='07:00-15:00'?'15:00':shift==='15:00-23:00'?'23:00':null,assigned_by:current.uid};
+ const {error}=await supabaseClient.from('schedules').upsert(payload,{onConflict:'employee_id,work_date'});if(error)throw error;
 }
 
 function renderWeek(){
@@ -281,28 +288,23 @@ function handleWorkPhoto(event){
  reader.onerror=()=>$('photoHint').textContent='No se pudo cargar la fotografía.';
  reader.readAsDataURL(file);
 }
-function savePhotoPunch(type,photoData){
- const date=today;let r=records.find(x=>x.date===date&&x.id===current.id);
- if(!r){r={date,id:current.id,name:current.name,shift:shiftFor(current,date),entrada:'',salida:'',evidencias:[]};records.push(r)}
- if(!r.evidencias)r.evidencias=[];
- if(type==='entrada'&&!r.entrada){
-  r.entrada=new Date().toLocaleTimeString('es-MX');
-  r.evidencias.push({tipo:type,hora:new Date().toISOString(),foto:photoData});
- }else if(type==='salida'&&r.entrada&&!r.salida){
-  r.salida=new Date().toLocaleTimeString('es-MX');
-  r.evidencias.push({tipo:type,hora:new Date().toISOString(),foto:photoData});
- }else{
-  $('photoHint').textContent='Esta marcación ya fue registrada o no corresponde.';
-  renderAll();return;
- }
- r.shift=shiftFor(current,date);
+async function savePhotoPunch(type,photoData){
+ const date=today, person=current;
  try{
-  setStore('attendanceRecords',records);
-  $('photoHint').textContent=`${type==='entrada'?'Entrada':'Salida'} registrada con fotografía.`;
- }catch(err){
-  $('photoHint').textContent='La foto se tomó, pero el almacenamiento del navegador está lleno. Publica el sistema con almacenamiento en servidor para conservar evidencias.';
- }
- renderAll();
+  let {data:existing,error:findErr}=await supabaseClient.from('attendance').select('*').eq('employee_id',person.uid).eq('work_date',date).maybeSingle();
+  if(findErr)throw findErr;
+  const stamp=new Date().toISOString();
+  let row=existing;
+  if(!row){const payload={employee_id:person.uid,work_date:date,check_in:type==='entrada'?stamp:null,check_out:null};const {data,error}=await supabaseClient.from('attendance').insert(payload).select().single();if(error)throw error;row=data;}
+  else if(type==='salida'&&row.check_in&&!row.check_out){const {data,error}=await supabaseClient.from('attendance').update({check_out:stamp}).eq('id',row.id).select().single();if(error)throw error;row=data;}
+  else throw new Error('Esta marcación ya fue registrada o no corresponde.');
+  const blob=await (await fetch(photoData)).blob();
+  const path=`${person.uid}/${date}/${type}-${Date.now()}.jpg`;
+  const {error:upErr}=await supabaseClient.storage.from('attendance-photos').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(upErr)throw upErr;
+  const {error:evErr}=await supabaseClient.from('evidence').insert({attendance_id:row.id,employee_id:person.uid,evidence_type:type==='entrada'?'check_in':'check_out',storage_path:path});if(evErr)throw evErr;
+  $('photoHint').textContent=`${type==='entrada'?'Entrada':'Salida'} registrada y fotografía subida al servidor.`;
+  await loadCloudData();renderAll();
+ }catch(err){$('photoHint').textContent='No se pudo guardar la marcación: '+err.message;}
 }
 
 function renderRecords(){
@@ -310,16 +312,13 @@ function renderRecords(){
  $('attendanceRows').innerHTML=sorted.map((r,i)=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${shiftNames[r.shift]||'Por asignar'}</td><td>${r.entrada||'—'}</td><td>${r.salida||'—'}</td><td><span class="status ${r.entrada&&r.salida?'ok':'pending'}">${r.entrada&&r.salida?'Completa':r.entrada?'Falta salida':'Pendiente'}</span>${(r.evidencias||[]).map((e,j)=>`<div><button class="secondary" style="padding:5px 8px;margin-top:4px" onclick="viewEvidence(${records.indexOf(r)},${j})">Ver ${e.tipo}</button></div>`).join('')}</td></tr>`).join('');
  $('noRows').classList.toggle('hidden',sorted.length>0);
 }
-function viewEvidence(recordIndex,evidenceIndex){
- const evidence=records[recordIndex]?.evidencias?.[evidenceIndex];
- if(!evidence)return;
- const w=window.open('');
- if(!w){alert('Permite ventanas emergentes para ver la fotografía.');return}
- w.document.write(`<title>Evidencia ${evidence.tipo}</title><p>${evidence.tipo} · ${new Date(evidence.hora).toLocaleString('es-MX')}</p><img src="${evidence.foto}" style="max-width:100%;height:auto">`);
+async function viewEvidence(recordIndex,evidenceIndex){
+ const evidence=records[recordIndex]?.evidencias?.[evidenceIndex];if(!evidence)return;
+ try{const {data,error}=await supabaseClient.storage.from('attendance-photos').createSignedUrl(evidence.path,300);if(error)throw error;const w=window.open('');if(!w){alert('Permite ventanas emergentes para ver la fotografía.');return;}w.document.write(`<title>Evidencia ${evidence.tipo}</title><p>${evidence.tipo} · ${new Date(evidence.hora).toLocaleString('es-MX')}</p><img src="${data.signedUrl}" style="max-width:100%;height:auto">`);}catch(e){alert('No se pudo abrir la fotografía: '+e.message);}
 }
 
 function exportCSV(){
- if(!current || !['alondra','rafa'].includes(current.id)){
+ if(!current || current.dbRole!=='admin'){
   alert('Solo Alondra y Rafa pueden exportar el reporte.');
   return;
  }
@@ -328,10 +327,10 @@ function exportCSV(){
   const evidences=r.evidencias||[];
   rows.push([
    r.date,r.name,shiftNames[r.shift]||'Por asignar',r.entrada||'',r.salida||'',
-   evidences.some(e=>e.tipo==='entrada'&&e.foto)?'Foto cargada':'Sin foto',
-   evidences.some(e=>e.tipo==='salida'&&e.foto)?'Foto cargada':(r.salida?'Sin foto':'No aplica'),
-   evidences.some(e=>e.foto)?'Con evidencia':'Sin evidencia',
-   evidences.filter(e=>e.foto).length,
+   evidences.some(e=>e.tipo==='entrada'&&e.path)?'Foto cargada':'Sin foto',
+   evidences.some(e=>e.tipo==='salida'&&e.path)?'Foto cargada':(r.salida?'Sin foto':'No aplica'),
+   evidences.some(e=>e.path)?'Con evidencia':'Sin evidencia',
+   evidences.filter(e=>e.path).length,
    evidences.map(e=>`${e.tipo}: ${new Date(e.hora).toLocaleString('es-MX')}`).join(' | ')
   ]);
  });
