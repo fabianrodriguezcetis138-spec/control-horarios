@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ControlPro · Prueba de reconocimiento facial</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#172033;background:#f3f5f9}
+*{box-sizing:border-box}body{margin:0;padding:16px}
+main{max-width:680px;margin:20px auto;background:#fff;border:1px solid #e3e7ef;border-radius:16px;padding:20px;box-shadow:0 5px 20px #1720330c}
+h1{margin:0 0 8px;font-size:24px}p{color:#687386;line-height:1.5}
+.stage{position:relative;background:#111827;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin:16px 0}
+video,canvas{position:absolute;width:100%;height:100%;inset:0;object-fit:cover;transform:scaleX(-1)}
+#status{padding:12px;border-radius:10px;background:#f1f3f7;margin:12px 0;font-weight:600;line-height:1.4}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0}
+button{border:0;border-radius:10px;padding:12px 15px;font:inherit;font-weight:700;background:#5b4bdb;color:#fff;cursor:pointer}
+button.secondary{background:#e9ecf3;color:#263044}button.danger{background:#a72d3b}button:disabled{opacity:.45;cursor:not-allowed}
+.note{background:#fff8e6;border:1px solid #f0dfae;border-radius:10px;padding:12px;color:#654f16;font-size:14px;line-height:1.45}
+small{color:#687386}.count{font-weight:700}
+</style>
+</head>
+<body>
+<main>
+  <h1>ControlPro · Prueba de reconocimiento facial</h1>
+  <p>Prueba experimental para Alondra. Primero registra tres muestras de su rostro y después compara una nueva captura con esas muestras.</p>
+  <div class="note"><b>Privacidad:</b> las muestras biométricas se mantienen únicamente en la memoria de esta página y se borran al recargarla o cerrarla. Las fotos y descriptores no se envían a ControlPro ni a Supabase. La página descarga la librería y los modelos desde un CDN.</div>
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+  <div id="status">Pulsa «Cargar modelos y cámara» para comenzar.</div>
+  <div class="actions">
+    <button id="start">Cargar modelos y cámara</button>
+    <button id="enroll" disabled>Registrar muestra 1 de 3</button>
+    <button id="verify" disabled>Comprobar rostro</button>
+    <button id="clear" class="secondary" disabled>Borrar muestras</button>
+    <button id="stop" class="danger" disabled>Detener</button>
+  </div>
+  <p class="count" id="samples">Muestras registradas: 0 de 3</p>
+  <p><small>Haz las tres capturas con buena iluminación, mirando al frente y sin cubrir el rostro. Para la comparación, cambia ligeramente la posición o expresión.</small></p>
+  <div class="note">Esta prueba no incluye prueba de vida. Puede equivocarse y no debe usarse todavía para autorizar entradas o salidas, ni como mecanismo de seguridad laboral.</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+<script>
+const video=document.getElementById('video');
+const canvas=document.getElementById('overlay');
+const ctx=canvas.getContext('2d');
+const statusEl=document.getElementById('status');
+const startBtn=document.getElementById('start');
+const enrollBtn=document.getElementById('enroll');
+const verifyBtn=document.getElementById('verify');
+const clearBtn=document.getElementById('clear');
+const stopBtn=document.getElementById('stop');
+const samplesEl=document.getElementById('samples');
+const MODEL_URL='https://cdn.jsdelivr.net/gh/vladmandic/face-api@1.7.12/model';
+let stream=null, samples=[], busy=false, raf=0, faceapiReady=false;
+
+function setStatus(t){statusEl.textContent=t;}
+function updateUI(){
+  samplesEl.textContent='Muestras registradas: '+samples.length+' de 3';
+  enrollBtn.disabled=!faceapiReady||samples.length>=3||busy;
+  enrollBtn.textContent='Registrar muestra '+(samples.length+1)+' de 3';
+  verifyBtn.disabled=!faceapiReady||samples.length!==3||busy;
+  clearBtn.disabled=samples.length===0||busy;
+}
+async function start(){
+  startBtn.disabled=true;
+  try{
+    if(!window.faceapi) throw new Error('No se pudo cargar la librería facial. Revisa tu conexión.');
+    setStatus('Cargando modelos de reconocimiento…');
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+    ]);
+    setStatus('Solicitando permiso para usar la cámara…');
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
+    video.srcObject=stream;
+    await new Promise(resolve=>video.onloadedmetadata=resolve);
+    await video.play();
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+    faceapiReady=true;stopBtn.disabled=false;startBtn.disabled=true;
+    setStatus('Listo. Centra el rostro y registra tres muestras de Alondra.');
+    updateUI();drawLoop();
+  }catch(err){
+    setStatus('No se pudo iniciar: '+(err.message||err)+'. Revisa HTTPS, conexión y permiso de cámara.');
+    startBtn.disabled=false;
+    stopCamera(false);
+  }
+}
+async function getDescriptor(){
+  const result=await faceapi.detectSingleFace(video,new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.5}))
+    .withFaceLandmarks().withFaceDescriptor();
+  return result||null;
+}
+async function enroll(){
+  if(busy)return;busy=true;updateUI();
+  try{
+    setStatus('Analizando rostro…');
+    const result=await getDescriptor();
+    if(!result){setStatus('No detecté un rostro claro. Mira al frente y mejora la iluminación.');return;}
+    samples.push(Array.from(result.descriptor));
+    setStatus('Muestra '+samples.length+' de 3 registrada en esta página.');
+    updateUI();
+    if(samples.length===3)setStatus('¡Listo! Ya puedes pulsar «Comprobar rostro».');
+  }catch(e){setStatus('Error al registrar: '+e.message);}
+  finally{busy=false;updateUI();}
+}
+function distance(a,b){
+  let sum=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];sum+=d*d;}
+  return Math.sqrt(sum);
+}
+async function verify(){
+  if(busy||samples.length!==3)return;busy=true;updateUI();
+  try{
+    setStatus('Comparando el rostro con las tres muestras…');
+    const result=await getDescriptor();
+    if(!result){setStatus('No detecté un rostro. Intenta de nuevo con buena iluminación.');return;}
+    const dists=samples.map(s=>distance(s,result.descriptor));
+    const best=Math.min(...dists);
+    const threshold=0.50;
+    if(best<threshold){
+      setStatus('Coincidencia probable con las muestras de Alondra. Distancia: '+best.toFixed(3)+'. Esto no confirma identidad de forma segura.');
+    }else{
+      setStatus('No coincide suficientemente con las muestras registradas. Distancia: '+best.toFixed(3)+'. Intenta otra vez; el sistema puede equivocarse.');
+    }
+  }catch(e){setStatus('Error al comparar: '+e.message);}
+  finally{busy=false;updateUI();}
+}
+function clearSamples(){samples=[];setStatus('Muestras borradas de la memoria de esta página.');updateUI();}
+function drawLoop(){
+  if(!stream)return;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  raf=requestAnimationFrame(drawLoop);
+}
+function stopCamera(resetStatus=true){
+  cancelAnimationFrame(raf);raf=0;
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  video.srcObject=null;ctx.clearRect(0,0,canvas.width,canvas.height);
+  faceapiReady=false;startBtn.disabled=false;stopBtn.disabled=true;
+  if(resetStatus)setStatus('Cámara detenida. Las muestras se borrarán al cerrar o recargar la página.');
+  updateUI();
+}
+startBtn.addEventListener('click',start);
+enrollBtn.addEventListener('click',enroll);
+verifyBtn.addEventListener('click',verify);
+clearBtn.addEventListener('click',clearSamples);
+stopBtn.addEventListener('click',()=>{clearSamples();stopCamera();});
+window.addEventListener('pagehide',()=>{samples=[];stopCamera(false);});
+updateUI();
+</script>
+</body>
+</html>
