@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ControlPro · Horarios y asistencia</title>
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--ink:#172033;--muted:#687386;--line:#e4e8ef;--accent:#5b4bdb;--accent2:#eeeaff;--green:#16845b;--red:#c43d4d;--amber:#9b6500}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial}
+header{background:#17182b;color:#fff;padding:25px 20px}header .wrap,main{max-width:1100px;margin:auto}h1{font-size:clamp(23px,4vw,32px);margin:0 0 5px}header p{margin:0;color:#c7c9d8}
+main{padding:22px 16px 50px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:17px;box-shadow:0 3px 12px #17203308}.card h2{font-size:17px;margin:0 0 12px}.muted{color:var(--muted)}.small{font-size:13px}.person{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}.person:last-child{border:0}.tag{display:inline-block;border-radius:99px;padding:4px 9px;background:var(--accent2);color:var(--accent);font-size:12px;font-weight:650}.tag.fixed{background:#e8f5ef;color:var(--green)}button,select,input{font:inherit}button{border:0;border-radius:10px;padding:10px 14px;background:var(--accent);color:white;font-weight:650;cursor:pointer}button.secondary{background:#edf0f5;color:#263044}button.danger{background:#fff0f1;color:var(--red)}button:disabled{opacity:.45;cursor:not-allowed}input,select{border:1px solid var(--line);border-radius:9px;padding:9px;background:white;color:var(--ink);width:100%}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px}.toolbar input{max-width:220px}.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:650px}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--muted);font-weight:650;background:#fafbfc}.empty{text-align:center;color:var(--muted);padding:24px}.shiftcell{min-width:115px}.shiftpill{display:inline-block;border-radius:8px;padding:6px 8px;font-size:12px;font-weight:650;background:#eeeaff;color:#5141c8}.shiftpill.pm{background:#e8f2ff;color:#245c9d}.shiftpill.rest{background:#f1f2f5;color:#687386}.shiftpill.fixed{background:#e8f5ef;color:#16845b}.notice{background:#fff8e8;border:1px solid #f2dfb3;color:#704d08;padding:12px 14px;border-radius:11px;margin:14px 0}.login{max-width:430px;margin:24px auto}.hidden{display:none!important}.clock{font-size:27px;font-weight:750;font-variant-numeric:tabular-nums}.status{font-size:12px;font-weight:700}.status.ok{color:var(--green)}.status.pending{color:var(--amber)}footer{color:var(--muted);font-size:12px;text-align:center;margin-top:25px}
+@media(max-width:600px){header{padding:21px 16px}.card{padding:14px}.toolbar{align-items:stretch}.toolbar input{max-width:none}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>Control de horarios y asistencia</h1><p>Registro de entradas, salidas, turnos y descansos del personal</p></div></header>
+<main>
+<section id="loginView" class="card login">
+  <h2>Ingresar al sistema</h2>
+  <p class="muted small">Selecciona tu usuario e ingresa tu contraseña.</p>
+  <label class="small" for="userSelect">Usuario</label>
+  <select id="userSelect"></select>
+  <div style="height:10px"></div>
+  <label class="small" for="password">Contraseña</label>
+  <input id="password" type="password" placeholder="Contraseña">
+  <div style="height:14px"></div>
+  <button id="loginBtn" style="width:100%">Entrar</button>
+  <p id="loginError" class="small" style="color:var(--red)"></p>
+  <p class="muted small">Ingresa con el correo y la contraseña de tu cuenta autorizada.</p>
+</section>
+
+<section id="appView" class="hidden">
+  <div class="toolbar">
+    <div><b id="welcome"></b><div class="muted small" id="todayLabel"></div></div>
+    <div class="row" style="flex:0 1 auto"><button class="secondary" id="exportBtn">Exportar asistencias CSV</button><input type="month" id="reportMonth" aria-label="Mes del reporte" style="max-width:170px"><button id="monthlyPdfBtn">Generar reporte PDF</button><button class="secondary" id="logoutBtn">Cerrar sesión</button></div>
+  </div>
+  <div class="grid">
+    <article class="card">
+      <h2>Mi marcación</h2>
+      <div class="clock" id="liveClock">--:--:--</div>
+      <p class="muted small" id="myShift"></p>
+      <p class="small muted">Para registrar entrada o salida debes tomar una foto del área de trabajo con la cámara trasera.</p>
+      <input id="workPhotoInput" type="file" accept="image/*" capture="environment" class="hidden">
+      <p id="photoHint" class="small muted">La foto se adjuntará a tu marcación como evidencia.</p>
+      <div class="row"><button id="entryBtn">Marcar entrada</button><button id="exitBtn" class="secondary">Marcar salida</button></div>
+      <p id="punchMessage" class="small muted"></p>
+    </article>
+    <article class="card">
+      <h2>Mi horario</h2>
+      <div id="mySchedule"></div>
+    </article>
+    <article class="card" id="adminCard">
+      <h2>Panel de administración</h2>
+      <p class="muted small">Consulta el personal, ajusta el turno operativo del día y revisa las marcaciones.</p>
+      <div class="row"><label class="small">Fecha <input type="date" id="scheduleDate"></label></div>
+    </article>
+  </div>
+  <div class="notice"><b>Regla de cobertura:</b> cuando Ale, Fernanda o Melanie descansa, las otras dos pueden cubrir/reacomodarse entre los turnos. Alondra y Yesenia conservan su horario fijo y no participan en la cobertura. Regla de capacidad: de lunes a sábado, el turno de mañana tendrá a Alondra y solo una empleada operativa (máximo 2 personas en total). El domingo Alondra descansa y pueden quedar hasta 2 empleadas operativas en la mañana. La rotación automática distribuye a las operativas entre mañana y tarde y respeta sus descansos fijos. Yesenia conserva el turno de tarde.</div>
+  <article class="card" id="faceAdminCard" style="margin:14px 0">
+    <h2>Registro facial de empleados</h2>
+    <p class="muted small">Solo Alondra y Rafa pueden administrar las referencias. Selecciona al empleado y carga una fotografía frontal, clara y con una sola persona. Por ahora se guarda únicamente la fotografía en almacenamiento privado; la comparación facial se integrará después de definir una protección adecuada para los datos biométricos.</p>
+    <div class="row">
+      <label class="small">Empleado
+        <select id="faceEmployee"></select>
+      </label>
+      <label class="small">Fotografía de referencia
+        <input id="facePhoto" type="file" accept="image/*" capture="user">
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button id="saveFaceBtn">Guardar referencia facial</button>
+      <button id="refreshFaceBtn" class="secondary" type="button">Actualizar lista</button>
+    </div>
+    <p id="faceStatus" class="small muted">Aún no se ha seleccionado una fotografía.</p>
+    <div id="faceRegistryList" class="small"></div>
+    <div class="notice"><b>Etapa 1:</b> este módulo solo administra fotografías de referencia. Todavía no genera plantillas biométricas ni bloquea o autoriza marcaciones. Antes de comparar rostros se requiere consentimiento informado, protección reforzada, revisión legal y una prueba de vida robusta.</div>
+  </article>
+  <div class="grid">
+    <article class="card">
+      <h2>Personal y horarios</h2>
+      <div id="staffList"></div>
+    </article>
+    <article class="card">
+      <h2>Asignar turno operativo</h2>
+      
+      <div id="shiftEditor"></div>
+    </article>
+  </div>
+  <article class="card" style="margin-top:14px">
+    <div class="toolbar">
+      <div><h2 style="margin:0">Calendario semanal de horarios</h2><div class="muted small">Vista de lunes a domingo con turnos y descansos</div></div>
+      <div class="row" style="flex:0 1 auto"><button class="secondary" id="prevWeek">← Semana anterior</button><button class="secondary" id="thisWeek">Esta semana</button><button class="secondary" id="nextWeek">Semana siguiente →</button><button id="randomWeekBtn">🎲 Generar semana aleatoria</button><button type="button" class="secondary" id="resetWeekBtn">↺ Restablecer semana</button><button id="saveShareBtn">Guardar horarios</button></div>
+    </div>
+    <p class="small muted" id="weekLabel"></p>
+    <div class="tablewrap"><table id="weekTable"><thead id="weekHead"></thead><tbody id="weekBody"></tbody></table></div>
+  </article>
+  <article class="card" style="margin-top:14px">
+    <div class="toolbar"><h2 style="margin:0">Registro de asistencias</h2><span class="muted small">Sincronizado con el servidor</span></div>
+    <div class="tablewrap"><table><thead><tr><th>Fecha</th><th>Empleado</th><th>Turno</th><th>Entrada</th><th>Salida</th><th>Estado</th></tr></thead><tbody id="attendanceRows"></tbody></table></div>
+    <div id="noRows" class="empty">Todavía no hay marcaciones.</div>
+  </article>
+</section>
+<footer>ControlPro · Datos sincronizados mediante Supabase.</footer>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://hwdzrodtqrivrujcenxt.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_w8qGP-p4FGu51iswVjT27Q_Sr4q-3EW";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const FACE_BUCKET='face-reference-photos';
+const people = [
+ {id:'alondra',email:'alondra@laslomas.com',name:'Alondra',role:'Encargada',shift:'07:00-15:00',rest:0,fixed:true},
+ {id:'yesenia',email:'yesenia@laslomas.com',name:'Yesenia',role:'Encargada',shift:'15:00-23:00',rest:6,fixed:true},
+ {id:'ale',email:'ale@laslomas.com',name:'Ale',role:'Operativa',shift:'',rest:3,fixed:false},
+ {id:'fernanda',email:'fernanda@laslomas.com',name:'Fernanda',role:'Operativa',shift:'',rest:2,fixed:false},
+ {id:'melanie',email:'melanie@laslomas.com',name:'Melanie',role:'Operativa',shift:'',rest:5,fixed:false},
+ {id:'rafa',email:'rafa@laslomas.com',name:'Rafa',role:'Jefe',shift:'',rest:null,fixed:true}
+];
+const days=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const shiftNames={'07:00-15:00':'7:00 a. m. – 3:00 p. m.','15:00-23:00':'3:00 p. m. – 11:00 p. m.','OFF':'Descanso','':'Por asignar'};
+const $=id=>document.getElementById(id);
+const getStore=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
+const setStore=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
+let current=null;
+let weekOffset=0;
+let schedules=getStore('staffSchedules',{});
+let records=getStore('attendanceRecords',[]);
+const dateKey=d=>{let x=d||new Date();return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`};
+const today=dateKey();
+const shiftFor=(p,date)=>p.fixed?p.shift:(schedules[date]?.[p.id]||'');
+const restText=p=>p.rest===null?'No aplica':days[p.rest];
+function init(){
+ $('userSelect').innerHTML=people.map(p=>`<option value="${p.id}">${p.name} — ${p.role}</option>`).join('');
+ $('scheduleDate').value=today;
+ $('todayLabel').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+ $('loginBtn').onclick=login; $('password').addEventListener('keydown',e=>{if(e.key==='Enter')login()});
+ $('logoutBtn').onclick=async()=>{await supabaseClient.auth.signOut();current=null;$('appView').classList.add('hidden');$('loginView').classList.remove('hidden');$('password').value=''};
+ $('entryBtn').onclick=()=>punch('entrada');$('exitBtn').onclick=()=>punch('salida');
+ $('workPhotoInput').onchange=handleWorkPhoto;
+ $('scheduleDate').onchange=renderAll;$('exportBtn').onclick=exportCSV;$('reportMonth').value=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;$('monthlyPdfBtn').onclick=exportMonthlyPDF;
+ $('prevWeek').onclick=()=>{weekOffset--;renderWeek()};$('nextWeek').onclick=()=>{weekOffset++;renderWeek()};$('thisWeek').onclick=()=>{weekOffset=0;renderWeek()};$('randomWeekBtn').onclick=generateRandomWeek;$('resetWeekBtn').onclick=resetWeek;$('saveShareBtn').onclick=saveAndShareWeek;
+ $('saveFaceBtn').onclick=saveFaceReference;$('refreshFaceBtn').onclick=loadFaceRegistry;
+ setInterval(()=>{$('liveClock').textContent=new Date().toLocaleTimeString('es-MX')},1000);
+}
+async function login(){
+ const id=$('userSelect').value;
+ const person=people.find(p=>p.id===id);
+ const password=$('password').value;
+ $('loginBtn').disabled=true;
+ $('loginError').textContent='Conectando…';
+ try{
+  const {data,error}=await supabaseClient.auth.signInWithPassword({email:person.email,password});
+  if(error) throw error;
+  const {data:profile,error:profileError}=await supabaseClient.from('profiles').select('*').eq('id',data.user.id).single();
+  if(profileError) throw profileError;
+  person.uid=data.user.id; current={...person,uid:data.user.id,dbRole:profile.role};
+  if(!profile.active) throw new Error('Tu cuenta está desactivada. Contacta a administración.');
+  await loadCloudData();
+  $('loginError').textContent='';
+  $('loginView').classList.add('hidden');$('appView').classList.remove('hidden');
+  $('welcome').textContent=`Hola, ${current.name}`;
+  renderAll();
+  $('faceAdminCard').classList.toggle('hidden',current.dbRole!=='admin');
+  if(current.dbRole==='admin'){renderFaceEmployeeOptions();await loadFaceRegistry();}
+ }catch(err){
+  $('loginError').textContent=err.message==='Invalid login credentials'?'Correo o contraseña incorrectos.':(err.message||'No se pudo iniciar sesión.');
+ }finally{$('loginBtn').disabled=false;}
+}
+async function loadCloudData(){
+ const {data:prof,error:pe}=await supabaseClient.from('profiles').select('id,full_name,role,active');
+ if(pe) throw pe;
+ (prof||[]).forEach(row=>{const p=people.find(x=>x.name.toLowerCase()===String(row.full_name).toLowerCase());if(p)p.uid=row.id;});
+ const {data:sch,error:se}=await supabaseClient.from('schedules').select('*');
+ if(se) throw se;
+ schedules={};
+ (sch||[]).forEach(r=>{const p=people.find(x=>x.uid===r.employee_id||x.id===r.employee_id);const key=r.work_date;if(!schedules[key])schedules[key]={};if(p)schedules[key][p.id]=r.shift==='morning'?'07:00-15:00':r.shift==='afternoon'?'15:00-23:00':r.shift==='rest'?'OFF':'';});
+ const {data:att,error:ae}=await supabaseClient.from('attendance').select('*, evidence(*)').order('work_date',{ascending:false});
+ if(ae) throw ae;
+ records=(att||[]).map(r=>{const p=people.find(x=>x.uid===r.employee_id);return {id:p?.id||r.employee_id,uid:r.employee_id,date:r.work_date,name:p?.name||'Empleado',shift:shiftFor(p||{fixed:false,id:''},r.work_date),entrada:r.check_in?new Date(r.check_in).toLocaleTimeString('es-MX'):'',salida:r.check_out?new Date(r.check_out).toLocaleTimeString('es-MX'):'',cloudId:r.id,evidencias:(r.evidence||[]).map(e=>({tipo:e.evidence_type==='check_in'?'entrada':'salida',hora:e.created_at,path:e.storage_path}))};});
+}
+
+
+function renderFaceEmployeeOptions(){
+  const select=$('faceEmployee');
+  if(!select)return;
+  const previous=select.value;
+  select.innerHTML=people.filter(p=>p.id!=='rafa'&&p.uid).map(p=>`<option value="${p.uid}">${p.name}</option>`).join('');
+  if(previous && [...select.options].some(o=>o.value===previous))select.value=previous;
+}
+async function loadFaceRegistry(){
+  if(!current||current.dbRole!=='admin')return;
+  try{
+    const {data,error}=await supabaseClient.from('face_profiles').select('employee_id,storage_path,updated_at').order('updated_at',{ascending:false});
+    if(error)throw error;
+    const rows=data||[];
+    if(!rows.length){$('faceRegistryList').innerHTML='<p class="muted">Todavía no hay fotografías de referencia registradas.</p>';return;}
+    const html=[];
+    for(const row of rows){
+      const person=people.find(p=>p.uid===row.employee_id);
+      const {data:signed,error:signedError}=await supabaseClient.storage.from(FACE_BUCKET).createSignedUrl(row.storage_path,300);
+      const preview=!signedError&&signed?.signedUrl?`<img src="${signed.signedUrl}" alt="Referencia de ${person?.name||'empleado'}" style="width:54px;height:54px;object-fit:cover;border-radius:9px">`:'<span class="muted">Foto privada</span>';
+      html.push(`<div class="person"><span style="display:flex;align-items:center;gap:10px">${preview}<span><b>${person?.name||'Empleado'}</b><br><span class="muted">Foto registrada · ${new Date(row.updated_at).toLocaleDateString('es-MX')}</span></span></span><button class="danger" type="button" data-face-delete="${row.employee_id}">Eliminar</button></div>`);
+    }
+    $('faceRegistryList').innerHTML=html.join('');
+    $('faceRegistryList').querySelectorAll('[data-face-delete]').forEach(btn=>btn.onclick=()=>deleteFaceReference(btn.dataset.faceDelete));
+  }catch(error){
+    $('faceRegistryList').textContent='No se pudo consultar el registro facial: '+error.message+'. Revisa que hayas ejecutado el SQL de configuración.';
+  }
+}
+async function saveFaceReference(){
+  if(!current||current.dbRole!=='admin'){alert('Solo Alondra y Rafa pueden registrar fotografías de referencia.');return;}
+  const employeeId=$('faceEmployee').value;
+  const file=$('facePhoto').files?.[0];
+  if(!employeeId){$('faceStatus').textContent='Selecciona un empleado.';return;}
+  if(!file||!file.type.startsWith('image/')){$('faceStatus').textContent='Selecciona una fotografía válida.';return;}
+  if(file.size>8*1024*1024){$('faceStatus').textContent='La fotografía debe pesar menos de 8 MB.';return;}
+  const btn=$('saveFaceBtn');btn.disabled=true;
+  let uploadedPath=null;
+  try{
+    $('faceStatus').textContent='Preparando fotografía…';
+    const oldResult=await supabaseClient.from('face_profiles').select('storage_path').eq('employee_id',employeeId).maybeSingle();
+    if(oldResult.error)throw oldResult.error;
+    const oldPath=oldResult.data?.storage_path||null;
+    const extension=(file.type.split('/')[1]||'jpg').replace('jpeg','jpg').replace(/[^a-z0-9]/gi,'');
+    uploadedPath=`${employeeId}/reference-${Date.now()}.${extension||'jpg'}`;
+    const {error:uploadError}=await supabaseClient.storage.from(FACE_BUCKET).upload(uploadedPath,file,{contentType:file.type,upsert:false});
+    if(uploadError)throw uploadError;
+    const {error:saveError}=await supabaseClient.from('face_profiles').upsert({
+      employee_id:employeeId,
+      storage_path:uploadedPath,
+      updated_by:current.uid,
+      updated_at:new Date().toISOString()
+    },{onConflict:'employee_id'});
+    if(saveError)throw saveError;
+    if(oldPath){const {error:removeError}=await supabaseClient.storage.from(FACE_BUCKET).remove([oldPath]);if(removeError)console.warn('No se pudo retirar la foto anterior:',removeError.message);}
+    const person=people.find(p=>p.uid===employeeId);
+    $('faceStatus').textContent=`Fotografía de referencia de ${person?.name||'empleado'} guardada en Supabase privado.`;
+    $('facePhoto').value='';
+    await loadFaceRegistry();
+  }catch(error){
+    if(uploadedPath)await supabaseClient.storage.from(FACE_BUCKET).remove([uploadedPath]);
+    $('faceStatus').textContent='No se pudo guardar: '+error.message;
+  }finally{btn.disabled=false;}
+}
+async function deleteFaceReference(employeeId){
+  if(!current||current.dbRole!=='admin')return;
+  const person=people.find(p=>p.uid===employeeId);
+  if(!confirm(`¿Eliminar la fotografía de referencia de ${person?.name||'este empleado'}?`))return;
+  try{
+    const {data,error}=await supabaseClient.from('face_profiles').select('storage_path').eq('employee_id',employeeId).maybeSingle();
+    if(error)throw error;
+    const {error:deleteError}=await supabaseClient.from('face_profiles').delete().eq('employee_id',employeeId);
+    if(deleteError)throw deleteError;
+    if(data?.storage_path){const {error:removeError}=await supabaseClient.storage.from(FACE_BUCKET).remove([data.storage_path]);if(removeError)throw removeError;}
+    $('faceStatus').textContent='Fotografía de referencia eliminada.';
+    await loadFaceRegistry();
+  }catch(error){$('faceStatus').textContent='No se pudo eliminar: '+error.message;}
+}
+
+function renderAll(){
+ if(!current)return;
+ const date=$('scheduleDate').value||today;
+ const ownShift=shiftFor(current,date);
+ $('myShift').textContent=current.id==='rafa'?'Acceso de jefe: consulta de horarios y asistencias':current.fixed?`Horario fijo: ${shiftNames[current.shift]}`:`Turno asignado para ${date}: ${shiftNames[ownShift]}`;
+ $('mySchedule').innerHTML=`<div class="person"><span>Tipo</span><b>${current.role}</b></div><div class="person"><span>Descanso fijo</span><b>${restText(current)}</b></div><div class="person"><span>Horario</span><b>${current.id==='rafa'?'Solo consulta':shiftNames[current.fixed?current.shift:ownShift]}</b></div>`;
+ const rec=records.find(r=>r.date===today&&r.id===current.id);
+ $('entryBtn').disabled=current.id==='rafa'||!!(rec&&rec.entrada);$('exitBtn').disabled=current.id==='rafa'||!(rec&&rec.entrada)||!!(rec&&rec.salida);
+ $('entryBtn').classList.toggle('hidden',current.id==='rafa');$('exitBtn').classList.toggle('hidden',current.id==='rafa');
+ $('punchMessage').textContent=current.id==='rafa'?'Rafa tiene acceso de consulta; no registra asistencia.':rec?`Entrada: ${rec.entrada||'Pendiente'} · Salida: ${rec.salida||'Pendiente'}`:'Aún no has marcado hoy.';
+ $('adminCard').classList.toggle('hidden',!['admin','viewer'].includes(current.dbRole));
+ $('faceAdminCard').classList.toggle('hidden',current.dbRole!=='admin');
+ $('exportBtn').classList.toggle('hidden',current.dbRole!=='admin');$('monthlyPdfBtn').classList.toggle('hidden',current.dbRole!=='admin');$('reportMonth').classList.toggle('hidden',current.dbRole!=='admin');
+ $('randomWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('resetWeekBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ $('saveShareBtn').classList.toggle('hidden',current.dbRole!=='admin');
+ const canSeeTeam=['admin','viewer'].includes(current.dbRole);
+ $('staffList').innerHTML=(canSeeTeam?people.filter(p=>p.id!=='rafa'):people.filter(p=>p.id===current.id)).map(p=>`<div class="person"><div><b>${p.name}</b><div class="muted small">${p.role} · Descansa ${restText(p)}</div></div><span class="tag ${p.fixed?'fixed':''}">${p.fixed?shiftNames[p.shift]:'Rotativo'}</span></div>`).join('');
+ renderEditor(date);renderRecords();renderWeek();
+}
+function renderEditor(date){
+ const host=$('shiftEditor');
+ if(current.dbRole!=='admin'){host.innerHTML='<p class="muted small">Solo Alondra y Rafa pueden editar y asignar los turnos. Puedes consultar el calendario en modo lectura.</p>';return}
+ host.innerHTML=people.filter(p=>!p.fixed).map(p=>{
+ const value=shiftFor(p,date);
+ const options=[['','Por asignar'],['07:00-15:00',shiftNames['07:00-15:00']],['15:00-23:00',shiftNames['15:00-23:00']],['OFF','Descanso']];
+ return `<div class="person"><div><b>${p.name}</b><div class="muted small">Descanso fijo: ${restText(p)}</div></div><select data-person="${p.id}">${options.map(([v,l])=>`<option value="${v}" ${value===v?'selected':''}>${l}</option>`).join('')}</select></div>`;
+ }).join('')+'<p class="small muted">Los descansos fijos se muestran como referencia; selecciona “Descanso” si corresponde para esa fecha.</p>';
+ host.querySelectorAll('select').forEach(sel=>sel.onchange=async()=>{const id=sel.dataset.person,p=people.find(x=>x.id===id);schedules[date]=schedules[date]||{};schedules[date][id]=sel.value;try{await saveScheduleCloud(p,date,sel.value);renderAll()}catch(e){alert('No se pudo guardar el turno: '+e.message)}});
+}
+
+function weekStart(offset=0){
+ const d=new Date();d.setHours(0,0,0,0);
+ const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day+offset*7);return d;
+}
+function dateString(d){return dateKey(d)}
+
+async function generateRandomWeek(){
+ if(!current || current.dbRole!=='admin'){
+  alert('Solo Alondra y Rafa pueden generar la rotación semanal.');
+  return;
+ }
+ const start=weekStart(weekOffset), dates=[];
+ for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);dates.push(d)}
+ const ops=people.filter(p=>!p.fixed);
+ dates.forEach(d=>{
+  const key=dateString(d);
+  schedules[key]=schedules[key]||{};
+  const working=ops.filter(p=>d.getDay()!==p.rest);
+  const shuffled=[...working].sort(()=>Math.random()-0.5);
+  if(d.getDay()===0){
+   // Sunday: Alondra is off; up to two operators can cover the morning.
+   shuffled.forEach((person,index)=>schedules[key][person.id]=index<2?'07:00-15:00':'15:00-23:00');
+  }else{
+   // Monday-Saturday: only one operator joins Alondra in the morning; the others work the afternoon with Yesenia.
+   shuffled.forEach((person,index)=>schedules[key][person.id]=index===0?'07:00-15:00':'15:00-23:00');
+  }
+  ops.filter(p=>!working.includes(p)).forEach(p=>schedules[key][p.id]='OFF');
+ });
+ try{for(const d of dates){const key=dateString(d);for(const p of ops){await saveScheduleCloud(p,key,schedules[key]?.[p.id]||'');}}await loadCloudData();renderAll();alert('Rotación aleatoria generada y sincronizada.');}catch(e){alert('No se pudo sincronizar la rotación: '+e.message)}
+}
+
+
+async function resetWeek(){
+ if(!current || current.dbRole!=='admin'){alert('Solo administración puede restablecer la semana.');return;}
+ if(!confirm('¿Restablecer los turnos operativos de esta semana? No se borrarán asistencias ni fotografías.'))return;
+ const start=weekStart(weekOffset);
+ try{for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);const key=dateString(d);const {error}=await supabaseClient.from('schedules').delete().eq('work_date',key).in('employee_id',people.filter(p=>!p.fixed).map(p=>p.uid));if(error)throw error;}
+ await loadCloudData();renderAll();alert('Semana restablecida y sincronizada.');}catch(e){alert('No se pudo restablecer: '+e.message);}
+}
+
+async function saveAndShareWeek(){
+ if(!current || current.dbRole!=='admin'){alert('Solo administración puede guardar horarios.');return;}
+ try{await loadCloudData();renderAll();alert('Los horarios están guardados en Supabase y disponibles para los usuarios autorizados.');}catch(e){alert('No se pudieron actualizar los horarios: '+e.message);}
+}
+async function saveScheduleCloud(person,date,shift){
+ if(!person?.uid)throw new Error('No se encontró el usuario del empleado.');
+ const map={'07:00-15:00':'morning','15:00-23:00':'afternoon','OFF':'rest','':'unassigned'};
+ const payload={employee_id:person.uid,work_date:date,shift:map[shift]||'unassigned',start_time:shift==='07:00-15:00'?'07:00':shift==='15:00-23:00'?'15:00':null,end_time:shift==='07:00-15:00'?'15:00':shift==='15:00-23:00'?'23:00':null,assigned_by:current.uid};
+ const {error}=await supabaseClient.from('schedules').upsert(payload,{onConflict:'employee_id,work_date'});if(error)throw error;
+}
+
+function renderWeek(){
+ if(!current)return;
+ const start=weekStart(weekOffset), dates=[];
+ for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);dates.push(d)}
+ $('weekLabel').textContent=`${dates[0].toLocaleDateString('es-MX',{day:'numeric',month:'short'})} – ${dates[6].toLocaleDateString('es-MX',{day:'numeric',month:'short',year:'numeric'})}`;
+ $('weekHead').innerHTML='<tr><th>Personal</th>'+dates.map(d=>`<th>${days[d.getDay()]}<br><span class="muted small">${d.getDate()}/${d.getMonth()+1}</span></th>`).join('')+'</tr>';
+ const visiblePeople=['admin','viewer'].includes(current.dbRole)?people.filter(p=>p.id!=='rafa'):people.filter(p=>p.id===current.id);
+ $('weekBody').innerHTML=visiblePeople.map(p=>{
+  const cells=dates.map(d=>{
+   const key=dateString(d),rest=d.getDay()===p.rest;
+   let sh=rest?'OFF':shiftFor(p,key);
+   // Fixed staff retain their fixed shifts; operational staff get the generated daily assignment.
+   if(!p.fixed && rest)sh='OFF';
+   const cls=sh==='OFF'?'rest':sh==='15:00-23:00'?'pm':p.fixed?'fixed':'';
+   const label=sh==='OFF'?'Descanso':shiftNames[sh]||'Por asignar';
+   return `<td class="shiftcell"><span class="shiftpill ${cls}">${label}</span></td>`;
+  }).join('');
+  return `<tr><td><b>${p.name}</b><br><span class="muted small">${p.role}</span></td>${cells}</tr>`;
+ }).join('');
+}
+
+let pendingPunchType=null;
+function punch(type){
+ if(current.id==='rafa')return;
+ pendingPunchType=type;
+ $('photoHint').textContent=`Tomando foto obligatoria para registrar ${type==='entrada'?'la entrada':'la salida'}…`;
+ $('workPhotoInput').value='';
+ $('workPhotoInput').click();
+}
+function handleWorkPhoto(event){
+ const file=event.target.files&&event.target.files[0];
+ if(!file){$('photoHint').textContent='No se tomó ninguna foto. La marcación no se registró.';return}
+ if(!file.type.startsWith('image/')){
+  $('photoHint').textContent='El archivo seleccionado no es una imagen.';
+  return;
+ }
+ const reader=new FileReader();
+ reader.onload=()=>{
+  const img=new Image();
+  img.onload=()=>{
+   const maxWidth=900,scale=Math.min(1,maxWidth/img.width);
+   const canvas=document.createElement('canvas');
+   canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);
+   canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+   const photoData=canvas.toDataURL('image/jpeg',0.62);
+   savePhotoPunch(pendingPunchType,photoData);
+  };
+  img.onerror=()=>$('photoHint').textContent='No se pudo leer la fotografía. Intenta nuevamente.';
+  img.src=reader.result;
+ };
+ reader.onerror=()=>$('photoHint').textContent='No se pudo cargar la fotografía.';
+ reader.readAsDataURL(file);
+}
+async function savePhotoPunch(type,photoData){
+  const date=today, person=current;
+  let uploadedPath=null, attendanceId=null, previousCheckOut=null, wasNew=false;
+  try{
+    // La foto se sube primero: si Storage falla, no se registra la marcación.
+    const blob=await (await fetch(photoData)).blob();
+    uploadedPath=`${person.uid}/${date}/${type}-${Date.now()}.jpg`;
+    const {error:upErr}=await supabaseClient.storage.from('attendance-photos').upload(uploadedPath,blob,{contentType:'image/jpeg',upsert:false});
+    if(upErr)throw upErr;
+
+    let {data:existing,error:findErr}=await supabaseClient.from('attendance').select('*').eq('employee_id',person.uid).eq('work_date',date).maybeSingle();
+    if(findErr)throw findErr;
+    const stamp=new Date().toISOString();
+    let row=existing;
+    if(!row){
+      if(type!=='entrada')throw new Error('Primero debes registrar tu entrada.');
+      const {data,error}=await supabaseClient.from('attendance').insert({employee_id:person.uid,work_date:date,check_in:stamp,check_out:null}).select().single();
+      if(error)throw error;
+      row=data; wasNew=true; attendanceId=row.id;
+    }else if(type==='salida'&&row.check_in&&!row.check_out){
+      previousCheckOut=row.check_out;
+      const {data,error}=await supabaseClient.from('attendance').update({check_out:stamp}).eq('id',row.id).select().single();
+      if(error)throw error;
+      row=data; attendanceId=row.id;
+    }else{
+      throw new Error('Esta marcación ya fue registrada o no corresponde.');
+    }
+
+    const {error:evErr}=await supabaseClient.from('evidence').insert({
+      attendance_id:row.id,employee_id:person.uid,
+      evidence_type:type==='entrada'?'check_in':'check_out',storage_path:uploadedPath
+    });
+    if(evErr)throw evErr;
+
+    $('photoHint').textContent=`${type==='entrada'?'Entrada':'Salida'} registrada y fotografía subida al servidor.`;
+    await loadCloudData();renderAll();
+  }catch(err){
+    // Reversión preventiva si falla el registro de la evidencia.
+    if(attendanceId){
+      if(wasNew) await supabaseClient.from('attendance').delete().eq('id',attendanceId);
+      else if(type==='salida') await supabaseClient.from('attendance').update({check_out:previousCheckOut}).eq('id',attendanceId);
+    }
+    if(uploadedPath) await supabaseClient.storage.from('attendance-photos').remove([uploadedPath]);
+    $('photoHint').textContent='No se pudo guardar la marcación: '+err.message;
+  }
+}
+
+function renderRecords(){
+ const sorted=[...records].sort((a,b)=>b.date.localeCompare(a.date));
+ $('attendanceRows').innerHTML=sorted.map((r,i)=>`<tr><td>${r.date}</td><td>${r.name}</td><td>${shiftNames[r.shift]||'Por asignar'}</td><td>${r.entrada||'—'}</td><td>${r.salida||'—'}</td><td><span class="status ${r.entrada&&r.salida?'ok':'pending'}">${r.entrada&&r.salida?'Completa':r.entrada?'Falta salida':'Pendiente'}</span>${(r.evidencias||[]).map((e,j)=>`<div><button class="secondary" style="padding:5px 8px;margin-top:4px" onclick="viewEvidence(${records.indexOf(r)},${j})">Ver ${e.tipo}</button></div>`).join('')}</td></tr>`).join('');
+ $('noRows').classList.toggle('hidden',sorted.length>0);
+}
+async function viewEvidence(recordIndex,evidenceIndex){
+ const evidence=records[recordIndex]?.evidencias?.[evidenceIndex];if(!evidence)return;
+ try{const {data,error}=await supabaseClient.storage.from('attendance-photos').createSignedUrl(evidence.path,300);if(error)throw error;const w=window.open('');if(!w){alert('Permite ventanas emergentes para ver la fotografía.');return;}w.document.write(`<title>Evidencia ${evidence.tipo}</title><p>${evidence.tipo} · ${new Date(evidence.hora).toLocaleString('es-MX')}</p><img src="${data.signedUrl}" style="max-width:100%;height:auto">`);}catch(e){alert('No se pudo abrir la fotografía: '+e.message);}
+}
+
+function exportCSV(){
+ if(!current || current.dbRole!=='admin'){
+  alert('Solo Alondra y Rafa pueden exportar el reporte.');
+  return;
+ }
+ const rows=[['Fecha','Empleado','Turno','Entrada','Salida','Evidencia entrada','Evidencia salida','Estado de evidencia','Cantidad de fotos','Evidencias (tipo y fecha/hora)']];
+ records.forEach(r=>{
+  const evidences=r.evidencias||[];
+  rows.push([
+   r.date,r.name,shiftNames[r.shift]||'Por asignar',r.entrada||'',r.salida||'',
+   evidences.some(e=>e.tipo==='entrada'&&e.path)?'Foto cargada':'Sin foto',
+   evidences.some(e=>e.tipo==='salida'&&e.path)?'Foto cargada':(r.salida?'Sin foto':'No aplica'),
+   evidences.some(e=>e.path)?'Con evidencia':'Sin evidencia',
+   evidences.filter(e=>e.path).length,
+   evidences.map(e=>`${e.tipo}: ${new Date(e.hora).toLocaleString('es-MX')}`).join(' | ')
+  ]);
+ });
+ const csv=rows.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(',')).join('\r\n');
+ const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='reporte_asistencias_alondra_rafa.csv';a.click();URL.revokeObjectURL(url);
+}
+
+async function exportMonthlyPDF(){
+  if(!current || current.dbRole!=='admin'){alert('Solo Alondra y Rafa pueden generar reportes.');return;}
+  const month=$('reportMonth').value;
+  if(!month){alert('Selecciona el mes del reporte.');return;}
+  const reportWindow=window.open('','_blank');
+  if(!reportWindow){alert('Permite las ventanas emergentes para generar el reporte.');return;}
+  reportWindow.document.write('<p style="font-family:Arial;padding:24px">Preparando reporte y cargando fotografías…</p>');
+  try{
+    const monthRecords=records.filter(r=>String(r.date||'').startsWith(month)).sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
+    const staff=people.filter(p=>p.id!=='rafa');
+    const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const monthLabel=new Date(`${month}-15T12:00:00`).toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+    const dateLabel=value=>new Date(`${value}T12:00:00`).toLocaleDateString('es-MX',{day:'2-digit',month:'long',year:'numeric'});
+    const sections=[];
+    for(const person of staff){
+      const personRecords=monthRecords.filter(r=>r.id===person.id||r.name===person.name);
+      const complete=personRecords.filter(r=>r.entrada&&r.salida).length;
+      const incomplete=personRecords.filter(r=>!r.entrada||!r.salida).length;
+      let rows='';
+      if(!personRecords.length){rows='<p class="empty">Sin registros de asistencia en este periodo.</p>';}
+      else{
+        for(const record of personRecords){
+          const evidenceHtml=[];
+          for(const type of ['entrada','salida']){
+            const evidence=(record.evidencias||[]).find(e=>e.tipo===type&&e.path);
+            let photo='<div class="no-photo">Sin fotografía registrada</div>';
+            if(evidence){
+              const {data,error}=await supabaseClient.storage.from('attendance-photos').createSignedUrl(evidence.path,3600);
+              if(!error&&data?.signedUrl) photo=`<img class="evidence-photo" src="${esc(data.signedUrl)}" alt="Evidencia de ${type} de ${esc(record.name)}">`;
+              else photo='<div class="no-photo">No se pudo cargar esta fotografía</div>';
+            }
+            const time=type==='entrada'?record.entrada:record.salida;
+            evidenceHtml.push(`<div class="evidence"><div class="evidence-title">${type==='entrada'?'Entrada':'Salida'} · ${esc(time||'Sin registro')}</div>${photo}</div>`);
+          }
+          rows+=`<article class="day-record"><div class="record-head"><b>${esc(dateLabel(record.date))}</b><span>${esc(shiftNames[record.shift]||'Turno no disponible')}</span></div><div class="evidence-grid">${evidenceHtml.join('')}</div><div class="record-status">${record.entrada&&record.salida?'Marcación completa':!record.entrada?'Sin entrada registrada':'Sin salida registrada'}</div></article>`;
+        }
+      }
+      sections.push(`<section class="employee-section"><h2>${esc(person.name)}</h2><div class="summary">${personRecords.length} días con registro · ${complete} marcaciones completas · ${incomplete} incompletas</div>${rows}</section>`);
+    }
+    const doc=`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>ControlPro - Reporte ${esc(monthLabel)}</title>
+    <style>
+      *{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#172033;margin:0;padding:28px;background:#fff}
+      .top{border-bottom:3px solid #5b4bdb;padding-bottom:16px;margin-bottom:22px}h1{font-size:25px;margin:0 0 5px;color:#17182b}
+      .subtitle{font-size:17px;font-weight:bold;text-transform:capitalize}.meta{font-size:12px;color:#687386;margin-top:7px}
+      .print-actions{margin:0 0 22px;display:flex;gap:10px;align-items:center}button{border:0;border-radius:8px;padding:11px 16px;background:#5b4bdb;color:white;font-weight:bold;cursor:pointer}
+      .employee-section{margin:26px 0 34px;page-break-before:always;break-before:page}.employee-section:first-of-type{page-break-before:auto;break-before:auto}
+      h2{font-size:20px;margin:0 0 5px;border-bottom:1px solid #ddd;padding-bottom:8px}.summary{font-size:12px;color:#687386;margin-bottom:14px}
+      .day-record{border:1px solid #dfe3eb;border-radius:9px;padding:12px;margin:12px 0;break-inside:avoid;page-break-inside:avoid}
+      .record-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:13px;margin-bottom:10px}.record-head span{color:#687386}
+      .evidence-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.evidence{min-width:0}.evidence-title{font-size:12px;font-weight:bold;margin-bottom:6px}
+      .evidence-photo{display:block;width:100%;height:230px;object-fit:contain;background:#f3f5f9;border:1px solid #e4e8ef;border-radius:6px}
+      .no-photo{height:90px;background:#f5f6f8;border:1px dashed #c8ced8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#687386;font-size:12px;text-align:center;padding:8px}
+      .record-status{font-size:11px;color:#687386;margin-top:8px}.empty{color:#687386;font-size:13px;padding:15px;background:#f5f6f8}.footer{font-size:10px;color:#687386;text-align:center;margin-top:25px}
+      @page{size:A4;margin:14mm}@media print{body{padding:0}.print-actions{display:none}.day-record{break-inside:avoid}.evidence-photo{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body>
+      <div class="print-actions"><button onclick="window.print()">Imprimir / Guardar como PDF</button><span style="font-size:12px;color:#687386">En el destino de impresión, elige “Guardar como PDF”.</span></div>
+      <header class="top"><h1>CONTROLPRO</h1><div class="subtitle">Reporte mensual de asistencia · ${esc(monthLabel)}</div><div class="meta">Periodo: ${esc(month)} · Generado: ${esc(new Date().toLocaleString('es-MX'))}</div></header>
+      ${sections.join('')}<div class="footer">ControlPro · Reporte de asistencia · Las fotografías corresponden a las evidencias guardadas en el sistema.</div>
+    </body></html>`;
+    reportWindow.document.open();reportWindow.document.write(doc);reportWindow.document.close();
+  }catch(error){reportWindow.close();alert('No se pudo generar el reporte: '+(error.message||error));}
+}
+
+init();
+</script>
+</body>
+</html>
